@@ -1,40 +1,35 @@
-// app.js - Valós idejű frissítéssel
+// app.js - JAVÍTOTT VERZIÓ
 require('dotenv').config();
-const mongoose = require("mongoose");
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
-
-
 const jwt = require("jsonwebtoken");
+const path = require('path');
+const { initializeDatabase, dbAll, dbRun, dbGet } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// CORS middleware
-app.use(cors({
-  origin: ["http://localhost:3000", "http://192.168.0.162:3000", "http://127.0.0.1:3000", "http://localhost:3001"],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
 // Middleware
-app.use(bodyParser.json());
+app.use(cors({
+  origin: "*",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"]
+}));
+app.options('*', cors());
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Memória adattárolás
-let users = [];
-let nextUserId = 1;
 let lastActivity = {
   type: "Szerver indítva",
   username: "Rendszer",
   timestamp: new Date().toLocaleString("hu-HU")
 };
 
-console.log("🔧 MEMÓRIA ADATBÁZIS - MongoDB jelszó beállításáig");
-
-// Regisztrációs végpont
+// ✅ REGISZTRÁCIÓ
 app.post("/register", async (req, res) => {
   const { username, password, email } = req.body;
 
@@ -43,23 +38,19 @@ app.post("/register", async (req, res) => {
   }
 
   try {
-    const existing = users.find(user => user.username === username);
+    const existing = await dbGet('SELECT id FROM users WHERE username = ?', [username]);
+
     if (existing) {
       return res.status(400).json({ message: "Felhasználó már létezik" });
     }
 
     const hashedPw = await bcrypt.hash(password, 10);
-    const newUser = {
-      id: nextUserId++,
-      username,
-      password: hashedPw,
-      email: email || "Nincs megadva",
-      createdAt: new Date().toLocaleString("hu-HU"),
-      lastLogin: null
-    };
-    users.push(newUser);
+    
+    const result = await dbRun(
+      'INSERT INTO users (username, password, email) VALUES (?, ?, ?)',
+      [username, hashedPw, email || 'Nincs megadva']
+    );
 
-    // Tevékenység naplózása
     lastActivity = {
       type: "Regisztráció",
       username: username,
@@ -69,31 +60,32 @@ app.post("/register", async (req, res) => {
     console.log(`✅ Új felhasználó regisztrálva: ${username}`);
     res.json({ message: "Sikeres regisztráció" });
   } catch (err) {
+    console.error('Regisztrációs hiba:', err);
     res.status(500).json({ message: "Szerver hiba", error: err.message });
   }
 });
 
-// Bejelentkezési végpont
+// ✅ BEJELENTKEZÉS
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
   try {
-    const user = users.find(u => u.username === username);
+    const user = await dbGet('SELECT * FROM users WHERE username = ?', [username]);
+
     if (!user) {
       return res.status(401).json({ message: "Hibás belépési adatok" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
+    
     if (!isMatch) {
       return res.status(401).json({ message: "Hibás belépési adatok" });
     }
 
-    const token = jwt.sign({ id: user.id }, process.env.SECRET || "titkoskulcs", { expiresIn: "1h" });
+    const token = jwt.sign({ id: user.id }, process.env.SECRET || "titkoskulcs", { expiresIn: "24h" });
 
-    // Frissítjük a bejelentkezési időt
-    user.lastLogin = new Date().toLocaleString("hu-HU");
+    await dbRun('UPDATE users SET last_login = datetime("now") WHERE id = ?', [user.id]);
 
-    // Tevékenység naplózása
     lastActivity = {
       type: "Bejelentkezés",
       username: username,
@@ -104,239 +96,599 @@ app.post("/login", async (req, res) => {
     res.json({
       message: "Bejelentkezés sikeres!",
       token: token,
-      username: user.username
+      username: user.username,
+      user_id: user.id
     });
   } catch (err) {
+    console.error('Bejelentkezési hiba:', err);
     res.status(500).json({ message: "Szerver hiba", error: err.message });
   }
 });
 
-// CSS stílus
-const styles = `
-<style>
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin: 0;
-    padding: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
+// ✅ BEJEGYZÉS LÉTREHOZÁSA
+app.post("/posts", async (req, res) => {
+  const { user_id, content, image_url, video_url } = req.body;
+  
+  if (!user_id) {
+    return res.status(400).json({ message: "Hiányzó user_id" });
   }
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    overflow: hidden;
-  }
-  .header {
-    background: linear-gradient(135deg, #2c3e50, #3498db);
-    color: white;
-    padding: 30px;
-    text-align: center;
-  }
-  .header h1 {
-    margin: 0;
-    font-size: 2.5em;
-  }
-  .stats {
-    display: flex;
-    justify-content: space-around;
-    background: #34495e;
-    color: white;
-    padding: 15px;
-  }
-  .stat-box {
-    text-align: center;
-  }
-  .stat-number {
-    font-size: 2em;
-    font-weight: bold;
-    color: #3498db;
-  }
-  .content {
-    padding: 30px;
-  }
-  .users-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-  }
-  .users-table th {
-    background: #3498db;
-    color: white;
-    padding: 15px;
-    text-align: left;
-    font-weight: 600;
-  }
-  .users-table td {
-    padding: 12px 15px;
-    border-bottom: 1px solid #ecf0f1;
-  }
-  .users-table tr:hover {
-    background: #f8f9fa;
-  }
-  .users-table tr:nth-child(even) {
-    background: #f8f9fa;
-  }
-  .no-data {
-    text-align: center;
-    padding: 40px;
-    color: #7f8c8d;
-    font-style: italic;
-  }
-  .nav {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-  .nav a {
-    padding: 10px 20px;
-    background: #3498db;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
-    transition: background 0.3s;
-  }
-  .nav a:hover {
-    background: #2980b9;
-  }
-  .status-badge {
-    display: inline-block;
-    padding: 5px 10px;
-    border-radius: 20px;
-    font-size: 0.8em;
-    font-weight: bold;
-  }
-  .status-online {
-    background: #2ecc71;
-    color: white;
-  }
-  .status-offline {
-    background: #e74c3c;
-    color: white;
-  }
-  .activity-panel {
-    background: #f8f9fa;
-    padding: 15px;
-    border-radius: 10px;
-    margin-bottom: 20px;
-    border-left: 4px solid #3498db;
-  }
-  .refresh-info {
-    background: #d4edda;
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 15px;
-    border-left: 4px solid #28a745;
-  }
-  .auto-refresh {
-    background: #fff3cd;
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 15px;
-    border-left: 4px solid #ffc107;
-  }
-</style>
 
-<script>
-// Auto-refresh funkció
-let autoRefreshEnabled = true;
-let refreshInterval;
+  try {
+    const result = await dbRun(
+      'INSERT INTO posts (user_id, content, image_url, video_url) VALUES (?, ?, ?, ?)',
+      [user_id, content || '', image_url || '', video_url || '']
+    );
 
-function startAutoRefresh() {
-  refreshInterval = setInterval(() => {
-    if (autoRefreshEnabled) {
-      console.log('🔄 Automatikus frissítés...');
-      location.reload();
+    lastActivity = {
+      type: "Bejegyzés létrehozva",
+      username: "Felhasználó",
+      timestamp: new Date().toLocaleString("hu-HU")
+    };
+
+    res.json({
+      message: "Bejegyzés létrehozva",
+      post_id: result.id
+    });
+  } catch (err) {
+    console.error('Hiba a bejegyzés létrehozásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ BEJEGYZÉSEK LEKÉRÉSE
+app.get("/posts", async (req, res) => {
+  try {
+    const posts = await dbAll(`
+      SELECT p.*, u.username 
+      FROM posts p 
+      LEFT JOIN users u ON p.user_id = u.id 
+      ORDER BY p.created_at DESC
+    `);
+
+    // Kommentek és like információk lekérése
+    for (let post of posts) {
+      const comments = await dbAll(`
+        SELECT c.*, u.username 
+        FROM comments c 
+        LEFT JOIN users u ON c.user_id = u.id 
+        WHERE c.post_id = ? 
+        ORDER BY c.created_at ASC
+      `, [post.id]);
+      post.comments = comments;
+
+      // Like információk
+      const likeCount = await dbGet('SELECT COUNT(*) as count FROM post_likes WHERE post_id = ?', [post.id]);
+      post.likes = likeCount.count;
     }
-  }, 3000); // 3 másodpercenként
-}
 
-function toggleAutoRefresh() {
-  autoRefreshEnabled = !autoRefreshEnabled;
-  const button = document.getElementById('refreshToggle');
-  const status = document.getElementById('refreshStatus');
-  
-  if (autoRefreshEnabled) {
-    button.textContent = '⏸️ Auto Frissítés Kikapcsolása';
-    button.style.background = '#dc3545';
-    status.textContent = 'BE';
-    status.className = 'status-badge status-online';
-    startAutoRefresh();
-  } else {
-    button.textContent = '▶️ Auto Frissítés Bekapcsolása';
-    button.style.background = '#28a745';
-    status.textContent = 'KI';
-    status.className = 'status-badge status-offline';
-    clearInterval(refreshInterval);
+    res.json(posts);
+  } catch (err) {
+    console.error('Hiba a bejegyzések lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
   }
-}
+});
 
-// Oldal betöltésekor indul az auto-refresh
-document.addEventListener('DOMContentLoaded', function() {
-  startAutoRefresh();
+// ✅ KOMMENT HOZZÁADÁSA
+app.post("/posts/:id/comments", async (req, res) => {
+  const postId = req.params.id;
+  const { user_id, content } = req.body;
+
+  if (!user_id || !content) {
+    return res.status(400).json({ message: "Hiányzó adatok" });
+  }
+
+  try {
+    const result = await dbRun(
+      'INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)',
+      [postId, user_id, content]
+    );
+
+    res.json({
+      message: "Komment hozzáadva",
+      comment_id: result.id
+    });
+  } catch (err) {
+    console.error('Hiba a komment hozzáadásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ LIKE/UNLIKE
+app.post("/posts/:id/like", async (req, res) => {
+  const postId = req.params.id;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ message: "Hiányzó user_id" });
+  }
+
+  try {
+    // Ellenőrizzük, hogy likeolta-e már
+    const existingLike = await dbGet(
+      'SELECT id FROM post_likes WHERE post_id = ? AND user_id = ?',
+      [postId, user_id]
+    );
+
+    if (existingLike) {
+      // Ha már likeolta, akkor unlike
+      await dbRun('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [postId, user_id]);
+      
+      const updatedPost = await dbGet('SELECT COUNT(*) as likes FROM post_likes WHERE post_id = ?', [postId]);
+      
+      res.json({
+        message: "Like eltávolítva",
+        liked: false,
+        likes: updatedPost.likes
+      });
+    } else {
+      // Ha még nem likeolta, akkor like
+      await dbRun('INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)', [postId, user_id]);
+      
+      const updatedPost = await dbGet('SELECT COUNT(*) as likes FROM post_likes WHERE post_id = ?', [postId]);
+      
+      res.json({
+        message: "Like hozzáadva",
+        liked: true,
+        likes: updatedPost.likes
+      });
+    }
+  } catch (err) {
+    console.error('Hiba a like műveletnél:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ LIKE STÁTUSZ LEKÉRÉSE
+app.get("/posts/:id/like-status", async (req, res) => {
+  const postId = req.params.id;
+  const user_id = req.query.user_id;
+
+  if (!user_id) {
+    return res.status(400).json({ message: "Hiányzó user_id" });
+  }
+
+  try {
+    const like = await dbGet(
+      'SELECT id FROM post_likes WHERE post_id = ? AND user_id = ?',
+      [postId, user_id]
+    );
+
+    const likeCount = await dbGet('SELECT COUNT(*) as count FROM post_likes WHERE post_id = ?', [postId]);
+
+    res.json({
+      liked: !!like,
+      likes: likeCount.count
+    });
+  } catch (err) {
+    console.error('Hiba a like státusz lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ FELHASZNÁLÓ ADATAI
+app.get("/users/:id", async (req, res) => {
+  const userId = req.params.id;
+
+  try {
+    const user = await dbGet(
+      'SELECT id, username, email, created_at, last_login FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "Felhasználó nem található" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error('Hiba a felhasználó lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ FELHASZNÁLÓ KERESÉS
+app.get("/users/search", async (req, res) => {
+  const { query } = req.query;
   
-  // Frissítés gomb
-  document.getElementById('manualRefresh').addEventListener('click', function() {
-    location.reload();
+  console.log(`🎯 KERESÉS: "${query}"`);
+  
+  if (!query || query.trim().length === 0) {
+    return res.json([]);
+  }
+
+  const searchQuery = query.trim();
+  
+  try {
+    const { searchUsers } = require('./database');
+    const users = await searchUsers(searchQuery);
+    
+    console.log(`✅ Találatok: ${users.length} felhasználó`);
+    res.json(users);
+  } catch (err) {
+    console.error('❌ Keresési hiba:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ MENTÉS/VISSZAVONÁS
+app.post("/posts/:id/save", async (req, res) => {
+  const postId = req.params.id;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ message: "Hiányzó user_id" });
+  }
+
+  try {
+    const existingSave = await dbGet(
+      'SELECT id FROM saved_posts WHERE post_id = ? AND user_id = ?',
+      [postId, user_id]
+    );
+
+    if (existingSave) {
+      await dbRun('DELETE FROM saved_posts WHERE post_id = ? AND user_id = ?', [postId, user_id]);
+      res.json({ saved: false, message: "Mentés visszavonva" });
+    } else {
+      await dbRun('INSERT INTO saved_posts (post_id, user_id) VALUES (?, ?)', [postId, user_id]);
+      res.json({ saved: true, message: "Poszt mentve" });
+    }
+  } catch (err) {
+    console.error('Hiba a mentés váltásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ MENTETT POSZTOK
+app.get("/users/:id/saved-posts", async (req, res) => {
+  const userId = req.params.id;
+
+  try {
+    const savedPosts = await dbAll(`
+      SELECT p.*, u.username, sp.saved_at 
+      FROM saved_posts sp 
+      JOIN posts p ON sp.post_id = p.id 
+      LEFT JOIN users u ON p.user_id = u.id 
+      WHERE sp.user_id = ? 
+      ORDER BY sp.saved_at DESC
+    `, [userId]);
+
+    // Kommentek lekérése
+    for (let post of savedPosts) {
+      const comments = await dbAll(`
+        SELECT c.*, u.username 
+        FROM comments c 
+        LEFT JOIN users u ON c.user_id = u.id 
+        WHERE c.post_id = ? 
+        ORDER BY c.created_at ASC
+      `, [post.id]);
+      post.comments = comments;
+
+      // Like információk
+      const likeCount = await dbGet('SELECT COUNT(*) as count FROM post_likes WHERE post_id = ?', [post.id]);
+      post.likes = likeCount.count;
+    }
+
+    res.json(savedPosts);
+  } catch (err) {
+    console.error('Hiba a mentett posztok lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ MENTÉSI STÁTUSZ
+app.get("/posts/:id/save-status", async (req, res) => {
+  const postId = req.params.id;
+  const user_id = req.query.user_id;
+
+  if (!user_id) {
+    return res.status(400).json({ message: "Hiányzó user_id" });
+  }
+
+  try {
+    const save = await dbGet(
+      'SELECT id FROM saved_posts WHERE post_id = ? AND user_id = ?',
+      [postId, user_id]
+    );
+
+    res.json({ saved: !!save });
+  } catch (err) {
+    console.error('Hiba a mentési státusz lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ CHAT SZOBA LÉTREHOZÁSA
+app.post("/chat/rooms", async (req, res) => {
+  const { user1_id, user2_id } = req.body;
+
+  if (!user1_id || !user2_id) {
+    return res.status(400).json({ message: "Hiányzó user_id-k" });
+  }
+
+  try {
+    let room = await dbGet(
+      `SELECT * FROM chat_rooms 
+       WHERE (user1_id = ? AND user2_id = ?) 
+       OR (user1_id = ? AND user2_id = ?)`,
+      [user1_id, user2_id, user2_id, user1_id]
+    );
+
+    if (!room) {
+      const [minId, maxId] = [user1_id, user2_id].sort((a, b) => a - b);
+      const result = await dbRun(
+        'INSERT INTO chat_rooms (user1_id, user2_id) VALUES (?, ?)',
+        [minId, maxId]
+      );
+      room = await dbGet('SELECT * FROM chat_rooms WHERE id = ?', [result.id]);
+    }
+
+    res.json(room);
+  } catch (err) {
+    console.error('Hiba a chat szoba létrehozásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ ÜZENET KÜLDÉSE
+app.post("/chat/messages", async (req, res) => {
+  const { room_id, sender_id, message } = req.body;
+
+  if (!room_id || !sender_id || !message) {
+    return res.status(400).json({ message: "Hiányzó adatok" });
+  }
+
+  try {
+    const result = await dbRun(
+      'INSERT INTO messages (room_id, sender_id, message) VALUES (?, ?, ?)',
+      [room_id, sender_id, message]
+    );
+
+    await dbRun(
+      'UPDATE chat_rooms SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [room_id]
+    );
+
+    const newMessage = await dbGet(
+      `SELECT m.*, u.username as sender_username 
+       FROM messages m 
+       LEFT JOIN users u ON m.sender_id = u.id 
+       WHERE m.id = ?`,
+      [result.id]
+    );
+
+    res.json(newMessage);
+  } catch (err) {
+    console.error('Hiba az üzenet küldésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ ÜZENETEK LEKÉRÉSE
+app.get("/chat/rooms/:roomId/messages", async (req, res) => {
+  const roomId = req.params.roomId;
+
+  try {
+    const messages = await dbAll(
+      `SELECT m.*, u.username as sender_username 
+       FROM messages m 
+       LEFT JOIN users u ON m.sender_id = u.id 
+       WHERE m.room_id = ? 
+       ORDER BY m.created_at ASC`,
+      [roomId]
+    );
+
+    res.json(messages);
+  } catch (err) {
+    console.error('Hiba az üzenetek lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ CHAT SZOBÁK LEKÉRÉSE
+app.get("/users/:userId/chat-rooms", async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const rooms = await dbAll(
+      `SELECT cr.*, 
+              u1.username as user1_username,
+              u2.username as user2_username,
+              (SELECT message FROM messages WHERE room_id = cr.id ORDER BY created_at DESC LIMIT 1) as last_message,
+              (SELECT created_at FROM messages WHERE room_id = cr.id ORDER BY created_at DESC LIMIT 1) as last_message_time
+       FROM chat_rooms cr
+       LEFT JOIN users u1 ON cr.user1_id = u1.id
+       LEFT JOIN users u2 ON cr.user2_id = u2.id
+       WHERE cr.user1_id = ? OR cr.user2_id = ?
+       ORDER BY cr.last_message_at DESC`,
+      [userId, userId]
+    );
+
+    res.json(rooms);
+  } catch (err) {
+    console.error('Hiba a chat szobák lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ OLVASATLAN ÜZENETEK
+app.get("/users/:userId/unread-messages", async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const unreadCount = await dbGet(
+      `SELECT COUNT(*) as count 
+       FROM messages m
+       JOIN chat_rooms cr ON m.room_id = cr.id
+       WHERE m.is_read = 0 
+       AND m.sender_id != ?
+       AND (cr.user1_id = ? OR cr.user2_id = ?)`,
+      [userId, userId, userId]
+    );
+
+    res.json({ unread_count: unreadCount.count });
+  } catch (err) {
+    console.error('Hiba az olvasatlan üzenetek lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ ÜZENETEK OLVASOTTNAK JELÖLÉSE
+app.post("/chat/rooms/:roomId/mark-read", async (req, res) => {
+  const roomId = req.params.roomId;
+  const { user_id } = req.body;
+
+  try {
+    await dbRun(
+      `UPDATE messages 
+       SET is_read = 1 
+       WHERE room_id = ? AND sender_id != ? AND is_read = 0`,
+      [roomId, user_id]
+    );
+
+    res.json({ message: "Üzenetek olvasottnak jelölve" });
+  } catch (err) {
+    console.error('Hiba az üzenetek olvasottnak jelölésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ EGYSZERŰ TESZT VÉGPONT
+app.get("/test", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Szerver működik!",
+    timestamp: new Date().toISOString()
   });
 });
-</script>
-`;
 
-// Főoldal - valós idejű frissítéssel
-app.get("/", (req, res) => {
-  const html = `
-  <!DOCTYPE html>
-  <html lang="hu">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SocialM Admin - Valós Idejű</title>
-    ${styles}
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>🚀 SocialM Szerver</h1>
-        <p>Valós idejű adminisztrációs felület</p>
-      </div>
-      
-      <div class="stats">
-        <div class="stat-box">
-          <div class="stat-number">${users.length}</div>
-          <div>Regisztrált felhasználó</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-number">🔄</div>
-          <div>Auto Frissítés: <span id="refreshStatus" class="status-badge status-online">BE</span></div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-number">💾</div>
-          <div>Memória adatbázis</div>
-        </div>
-      </div>
-      
-      <div class="content">
-        <div class="nav">
-          <a href="/">Főoldal</a>
-          <a href="/admin/users">JSON adatok</a>
-          <a href="/status">Részletes állapot</a>
-          <button id="manualRefresh" style="padding: 10px 20px; background: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer;">🔄 Kézi Frissítés</button>
-          <button id="refreshToggle" onclick="toggleAutoRefresh()" style="padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">⏸️ Auto Frissítés Kikapcsolása</button>
+// ✅ HEALTH CHECK
+app.get("/health", async (req, res) => {
+  try {
+    const users = await dbGet('SELECT COUNT(*) as total FROM users');
+    const posts = await dbGet('SELECT COUNT(*) as total FROM posts');
+    const comments = await dbGet('SELECT COUNT(*) as total FROM comments');
+    
+    res.json({
+      status: "ok",
+      database: "sqlite",
+      stats: {
+        users: users.total,
+        posts: posts.total,
+        comments: comments.total
+      },
+      lastActivity: lastActivity,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  } catch (error) {
+    res.json({
+      status: "error",
+      database: "sqlite",
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ✅ DEBUG VÉGPONTOK
+app.get("/debug/users", async (req, res) => {
+  try {
+    const users = await dbAll('SELECT id, username, email FROM users');
+    console.log('📊 Összes felhasználó:', users);
+    res.json({
+      total: users.length,
+      users: users
+    });
+  } catch (err) {
+    console.error('Hiba a felhasználók lekérésekor:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/debug/create-test-user", async (req, res) => {
+  try {
+    const hashedPw = await bcrypt.hash("test123", 10);
+    
+    const result = await dbRun(
+      'INSERT OR IGNORE INTO users (username, password, email) VALUES (?, ?, ?)',
+      ["adam", hashedPw, "adam@test.com"]
+    );
+    
+    const users = await dbAll('SELECT * FROM users WHERE username = "adam"');
+    
+    res.json({
+      message: "Teszt felhasználó létrehozva",
+      userId: result.id,
+      users: users
+    });
+  } catch (err) {
+    console.error('Hiba a teszt felhasználó létrehozásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ FŐOLDAL
+app.get("/", async (req, res) => {
+  try {
+    const usersCount = await dbGet('SELECT COUNT(*) as count FROM users');
+    const users = await dbAll('SELECT username, email, created_at, last_login FROM users ORDER BY created_at DESC');
+    
+    const html = `
+    <!DOCTYPE html>
+    <html lang="hu">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>SocialM Szerver - JAVÍTOTT</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .stats { display: flex; justify-content: space-around; margin-bottom: 30px; }
+        .stat-box { text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; }
+        .users-table { width: 100%; border-collapse: collapse; }
+        .users-table th, .users-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .users-table th { background: #f8f9fa; }
+        .status-online { color: green; font-weight: bold; }
+        .status-offline { color: gray; }
+        .api-info { background: #e9ecef; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .success { color: green; font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🚀 SocialM Szerver - <span class="success">JAVÍTOTT VERZIÓ</span></h1>
+          <p>SQLite adatbázissal - Like/Unlike működik!</p>
         </div>
         
-        <div class="auto-refresh">
-          <strong>🔄 Automatikus frissítés aktív</strong> - Az oldal 3 másodpercenként frissül
+        <div class="stats">
+          <div class="stat-box">
+            <div style="font-size: 2em; font-weight: bold;">${usersCount.count}</div>
+            <div>Regisztrált felhasználó</div>
+          </div>
+          <div class="stat-box">
+            <div style="font-size: 2em;">✅</div>
+            <div>Like/Unlike működik</div>
+          </div>
+          <div class="stat-box">
+            <div style="font-size: 2em;">🟢</div>
+            <div>Szerver aktív</div>
+          </div>
         </div>
-        
-        <div class="activity-panel">
-          <h3>📝 Utolsó tevékenység</h3>
-          <p><strong>Típus:</strong> ${lastActivity.type}</p>
-          <p><strong>Felhasználó:</strong> ${lastActivity.username}</p>
-          <p><strong>Időpont:</strong> ${lastActivity.timestamp}</p>
+
+        <div class="api-info">
+          <h3>📡 Elérhető API végpontok:</h3>
+          <ul>
+            <li><strong>POST /register</strong> - Regisztráció ✅</li>
+            <li><strong>POST /login</strong> - Bejelentkezés ✅</li>
+            <li><strong>POST /posts</strong> - Új bejegyzés ✅</li>
+            <li><strong>GET /posts</strong> - Bejegyzések listázása ✅</li>
+            <li><strong>POST /posts/:id/like</strong> - Like/Unlike ✅</li>
+            <li><strong>GET /posts/:id/like-status</strong> - Like státusz ✅</li>
+            <li><strong>POST /posts/:id/comments</strong> - Komment hozzáadása ✅</li>
+            <li><strong>POST /posts/:id/save</strong> - Mentés ✅</li>
+          </ul>
         </div>
         
         <h2>📊 Regisztrált felhasználók</h2>
@@ -345,7 +697,6 @@ app.get("/", (req, res) => {
         <table class="users-table">
           <thead>
             <tr>
-              <th>ID</th>
               <th>Felhasználónév</th>
               <th>E-mail</th>
               <th>Regisztráció dátuma</th>
@@ -356,152 +707,51 @@ app.get("/", (req, res) => {
           <tbody>
             ${users.map(user => `
               <tr>
-                <td><strong>#${user.id}</strong></td>
-                <td>${user.username}</td>
-                <td>${user.email}</td>
-                <td>${user.createdAt}</td>
-                <td>${user.lastLogin || 'Még nem jelentkezett be'}</td>
-                <td><span class="status-badge ${user.lastLogin ? 'status-online' : 'status-offline'}">${user.lastLogin ? 'Aktív' : 'Inaktív'}</span></td>
+                <td><strong>${user.username}</strong></td>
+                <td>${user.email || 'Nincs megadva'}</td>
+                <td>${new Date(user.created_at).toLocaleString("hu-HU")}</td>
+                <td>${user.last_login ? new Date(user.last_login).toLocaleString("hu-HU") : 'Még nem jelentkezett be'}</td>
+                <td><span class="${user.last_login ? 'status-online' : 'status-offline'}">${user.last_login ? 'Aktív' : 'Inaktív'}</span></td>
               </tr>
             `).join('')}
           </tbody>
         </table>
         ` : `
-        <div class="no-data">
+        <div style="text-align: center; padding: 40px;">
           <h3>🤷‍♂️ Még nincsenek regisztrált felhasználók</h3>
           <p>Az első felhasználó regisztrálása után itt fognak megjelenni az adatok.</p>
         </div>
         `}
         
         <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
-          <h3>ℹ️ Valós idejű információk</h3>
-          <p><strong>Auto frissítés:</strong> 3 másodpercenként</p>
+          <h3>ℹ️ Szerver információk</h3>
+          <p><strong>Adatbázis:</strong> SQLite (Lokális fájl)</p>
+          <p><strong>Port:</strong> ${PORT}</p>
           <p><strong>Utolsó frissítés:</strong> ${new Date().toLocaleString("hu-HU")}</p>
-          <p><strong>Következő frissítés:</strong> <span id="nextRefresh">3 másodperc múlva</span></p>
+          <p><strong>Státusz:</strong> <span class="success">Minden funkció működik!</span></p>
         </div>
       </div>
-    </div>
+    </body>
+    </html>
+    `;
     
-    <script>
-      // Következő frissítés számláló
-      let countdown = 3;
-      function updateCountdown() {
-        document.getElementById('nextRefresh').textContent = countdown + ' másodperc múlva';
-        countdown--;
-        if (countdown < 0) countdown = 3;
-      }
-      setInterval(updateCountdown, 1000);
-      updateCountdown();
-    </script>
-  </body>
-  </html>
-  `;
-  
-  res.send(html);
+    res.send(html);
+  } catch (error) {
+    console.error('Hiba a főoldal betöltésekor:', error);
+    res.status(500).send('Hiba a szerveren');
+  }
 });
 
-// Felhasználók listázása JSON formátumban
-app.get("/admin/users", (req, res) => {
-  res.json({
-    database: "Memória (MongoDB jelszó beállításáig)",
-    totalUsers: users.length,
-    lastActivity: lastActivity,
-    users: users.map(u => ({
-      id: u.id,
-      username: u.username,
-      email: u.email,
-      createdAt: u.createdAt,
-      lastLogin: u.lastLogin
-    }))
+// Szerver indítás
+initializeDatabase().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 SocialM szerver fut: http://localhost:${PORT}`);
+    console.log(`🗃️ Adatbázis: SQLite (socialm.db)`);
+    console.log(`✅ Like/Unlike rendszer működik!`);
+    console.log(`📡 API végpontok elérhetőek!`);
   });
+}).catch(error => {
+  console.error('❌ Hiba az adatbázis inicializálásakor:', error);
 });
 
-// Részletes állapot oldal
-app.get("/status", (req, res) => {
-  const html = `
-  <!DOCTYPE html>
-  <html lang="hu">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Szerver Állapot - SocialM</title>
-    ${styles}
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>🔧 Szerver Állapot</h1>
-        <p>Részletes technikai információk</p>
-      </div>
-      
-      <div class="content">
-        <div class="nav">
-          <a href="/">Főoldal</a>
-          <a href="/admin/users">JSON adatok</a>
-          <a href="/status">Részletes állapot</a>
-          <button onclick="location.reload()" style="padding: 10px 20px; background: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer;">🔄 Frissítés</button>
-        </div>
-        
-        <h2>📈 Statisztikák</h2>
-        <table class="users-table">
-          <tr>
-            <td><strong>Regisztrált felhasználók</strong></td>
-            <td>${users.length} fő</td>
-          </tr>
-          <tr>
-            <td><strong>Aktív felhasználók</strong></td>
-            <td>${users.filter(u => u.lastLogin).length} fő</td>
-          </tr>
-          <tr>
-            <td><strong>Utolsó tevékenység</strong></td>
-            <td>${lastActivity.type} - ${lastActivity.username}</td>
-          </tr>
-          <tr>
-            <td><strong>Szerver port</strong></td>
-            <td>${PORT}</td>
-          </tr>
-          <tr>
-            <td><strong>Adatbázis típus</strong></td>
-            <td>Memória (MongoDB jelszó beállításáig)</td>
-          </tr>
-          <tr>
-            <td><strong>Utolsó frissítés</strong></td>
-            <td>${new Date().toLocaleString("hu-HU")}</td>
-          </tr>
-        </table>
-        
-        <h2 style="margin-top: 30px;">🔔 MongoDB Beállítás</h2>
-        <div style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
-          <p><strong>Jelenleg memória adatbázist használsz.</strong> Az adatok elvesznek a szerver újraindításakor.</p>
-          <p>Állítsd be a MongoDB Atlas jelszót az adatok tartós tárolásához!</p>
-        </div>
-      </div>
-    </div>
-  </body>
-  </html>
-  `;
-  
-  res.send(html);
-});
 
-// Health check (JSON)
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    database: "memory",
-    users: {
-      total: users.length,
-      active: users.filter(u => u.lastLogin).length
-    },
-    lastActivity: lastActivity,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Szerver fut a http://localhost:${PORT} címen`);
-  console.log(`📊 Valós idejű felület elérhető: http://localhost:${PORT}`);
-  console.log(`🔄 Auto frissítés: 3 másodpercenként`);
-  console.log(`👥 Regisztrált felhasználók: ${users.length}`);
-});
