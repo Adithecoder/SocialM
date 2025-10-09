@@ -139,9 +139,16 @@ struct UserSearchView: View {
         isLoading = true
         errorMessage = nil
         
+        // Üres query esetén ürítsük a találatokat
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            searchResults = []
+            isLoading = false
+            return
+        }
+        
         NetworkManager.shared.searchUsers(query: query) { result in
             DispatchQueue.main.async {
-                isLoading = false
+                self.isLoading = false
                 switch result {
                 case .success(let users):
                     self.searchResults = users

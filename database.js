@@ -39,28 +39,7 @@ const dbGet = (sql, params = []) => {
   });
 };
 
-// Keresés függvény - JAVÍTOTT
-async function searchUsers(query) {
-    const searchQuery = `%${query}%`;
-    console.log(`🔍 Keresés az adatbázisban: "${query}" -> "${searchQuery}"`);
-    
-    try {
-        const users = await dbAll(
-            `SELECT id, username, email, created_at, last_login 
-             FROM users 
-             WHERE username LIKE ? OR email LIKE ? 
-             ORDER BY username 
-             LIMIT 20`,
-            [searchQuery, searchQuery]
-        );
-        
-        console.log(`✅ Adatbázis találatok: ${users.length} felhasználó`);
-        return users;
-    } catch (error) {
-        console.error('❌ Keresési hiba:', error);
-        return [];
-    }
-}
+
 
 // LIKE-ok kezeléséhez új tábla
 function initializeDatabase() {
@@ -167,6 +146,56 @@ function initializeDatabase() {
       }
     });
 
+      
+      // Polls tábla
+      db.run(`
+        CREATE TABLE IF NOT EXISTS polls (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          post_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          question TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (post_id) REFERENCES posts (id),
+          FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+      `, (err) => {
+        if (err) console.error('Hiba a polls tábla létrehozásakor:', err);
+        else console.log('✅ Polls tábla létrehozva/ellenőrizve');
+      });
+
+      // Poll options tábla
+      db.run(`
+        CREATE TABLE IF NOT EXISTS poll_options (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          poll_id INTEGER NOT NULL,
+          option_text TEXT NOT NULL,
+          votes_count INTEGER DEFAULT 0,
+          FOREIGN KEY (poll_id) REFERENCES polls (id)
+        )
+      `, (err) => {
+        if (err) console.error('Hiba a poll_options tábla létrehozásakor:', err);
+        else console.log('✅ Poll options tábla létrehozva/ellenőrizve');
+      });
+
+      // Poll votes tábla
+      db.run(`
+        CREATE TABLE IF NOT EXISTS poll_votes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          poll_id INTEGER NOT NULL,
+          option_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (poll_id) REFERENCES polls (id),
+          FOREIGN KEY (option_id) REFERENCES poll_options (id),
+          FOREIGN KEY (user_id) REFERENCES users (id),
+          UNIQUE(poll_id, user_id)
+        )
+      `, (err) => {
+        if (err) console.error('Hiba a poll_votes tábla létrehozásakor:', err);
+        else console.log('✅ Poll votes tábla létrehozva/ellenőrizve');
+      });
+      
+      
     // Chat táblák
     db.run(`
       CREATE TABLE IF NOT EXISTS chat_rooms (
@@ -220,6 +249,5 @@ module.exports = {
     initializeDatabase,
     dbAll,
     dbRun,
-    dbGet,
-    searchUsers
+    dbGet
 };

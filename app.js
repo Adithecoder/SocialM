@@ -286,7 +286,7 @@ app.get("/users/:id", async (req, res) => {
   }
 });
 
-// ✅ FELHASZNÁLÓ KERESÉS
+// ✅ FELHASZNÁLÓ KERESÉS - JAVÍTOTT VERZIÓ
 app.get("/users/search", async (req, res) => {
   const { query } = req.query;
   
@@ -296,17 +296,52 @@ app.get("/users/search", async (req, res) => {
     return res.json([]);
   }
 
-  const searchQuery = query.trim();
+  const searchQuery = `%${query.trim()}%`;
   
   try {
-    const { searchUsers } = require('./database');
-    const users = await searchUsers(searchQuery);
+    // Először debugoljuk, hogy mit keresünk pontosan
+    console.log(`🔍 Keresési paraméter: ${searchQuery}`);
+    
+    // Ellenőrizzük, hogy vannak-e egyáltalán felhasználók
+    const allUsers = await dbAll('SELECT id, username, email FROM users');
+    console.log(`📊 Összes felhasználó az adatbázisban:`, allUsers);
+    
+    // Most a keresés - SQLite-ban máshogy kell a LIKE
+    const users = await dbAll(
+      `SELECT id, username, email, created_at, last_login 
+       FROM users 
+       WHERE username LIKE ? OR email LIKE ? 
+       ORDER BY username 
+       LIMIT 20`,
+      [searchQuery, searchQuery]
+    );
     
     console.log(`✅ Találatok: ${users.length} felhasználó`);
+    
+    if (users.length === 0) {
+      // Ha nincs találat, üres array-t küldünk, nem hibaüzenetet
+      return res.json([]);
+    }
+    
     res.json(users);
   } catch (err) {
     console.error('❌ Keresési hiba:', err);
     res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ DEBUG - ÖSSZES FELHASZNÁLÓ
+app.get("/debug/all-users", async (req, res) => {
+  try {
+    const users = await dbAll('SELECT id, username, email FROM users ORDER BY username');
+    console.log('📊 Összes felhasználó:', users);
+    res.json({
+      total: users.length,
+      users: users
+    });
+  } catch (err) {
+    console.error('Hiba a felhasználók lekérésekor:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -551,6 +586,132 @@ app.post("/chat/rooms/:roomId/mark-read", async (req, res) => {
     res.status(500).json({ message: "Szerver hiba", error: err.message });
   }
 });
+
+
+// ✅ SZAVAZÁS LÉTREHOZÁSA
+app.post("/posts/:id/poll", async (req, res) => {
+  const postId = req.params.id;
+  const { user_id, question, options } = req.body;
+
+  if (!user_id || !question || !options || options.length < 2) {
+    return res.status(400).json({
+      message: "Hiányzó adatok: kérdés és legalább 2 opció szükséges"
+    });
+  }
+
+  try {
+    // Szavazás létrehozása
+    const result = await dbRun(
+      'INSERT INTO polls (post_id, user_id, question) VALUES (?, ?, ?)',
+      [postId, user_id, question]
+    );
+
+    const pollId = result.id;
+
+    // Opciók hozzáadása
+    for (let option of options) {
+      await dbRun(
+        'INSERT INTO poll_options (poll_id, option_text) VALUES (?, ?)',
+        [pollId, option.text]
+      );
+    }
+
+    res.json({
+      message: "Szavazás létrehozva",
+      poll_id: pollId
+    });
+  } catch (err) {
+    console.error('Hiba a szavazás létrehozásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ SZAVAZÁS LEADÁSA
+app.post("/polls/:id/vote", async (req, res) => {
+  const pollId = req.params.id;
+  const { user_id, option_id } = req.body;
+
+  if (!user_id || !option_id) {
+    return res.status(400).json({ message: "Hiányzó adatok" });
+  }
+
+  try {
+    // Ellenőrizzük, hogy szavazott-e már
+    const existingVote = await dbGet(
+      'SELECT id FROM poll_votes WHERE poll_id = ? AND user_id = ?',
+      [pollId, user_id]
+    );
+
+    if (existingVote) {
+      return res.status(400).json({ message: "Már szavaztál erre a szavazásra" });
+    }
+
+    // Szavazat rögzítése
+    await dbRun(
+      'INSERT INTO poll_votes (poll_id, option_id, user_id) VALUES (?, ?, ?)',
+      [pollId, option_id, user_id]
+    );
+
+    // Frissítjük az opció szavazatszámát
+    await dbRun(
+      'UPDATE poll_options SET votes_count = votes_count + 1 WHERE id = ?',
+      [option_id]
+    );
+
+    res.json({ message: "Szavazat leadva" });
+  } catch (err) {
+    console.error('Hiba a szavazás leadásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ SZAVAZÁS ADATAI
+app.get("/polls/:id", async (req, res) => {
+  const pollId = req.params.id;
+  const user_id = req.query.user_id;
+
+  try {
+    // Szavazás alapadatok
+    const poll = await dbGet(`
+      SELECT p.*, u.username 
+      FROM polls p 
+      LEFT JOIN users u ON p.user_id = u.id 
+      WHERE p.id = ?
+    `, [pollId]);
+
+    if (!poll) {
+      return res.status(404).json({ message: "Szavazás nem található" });
+    }
+
+    // Opciók lekérése
+    const options = await dbAll(`
+      SELECT po.*, 
+             EXISTS(SELECT 1 FROM poll_votes pv WHERE pv.option_id = po.id AND pv.user_id = ?) as user_voted
+      FROM poll_options po 
+      WHERE po.poll_id = ?
+    `, [user_id, pollId]);
+
+    // Összes szavazat számának kiszámítása
+    const totalVotes = options.reduce((sum, option) => sum + option.votes_count, 0);
+
+    // Százalékos arányok hozzáadása
+    const optionsWithPercent = options.map(option => ({
+      ...option,
+      percentage: totalVotes > 0 ? Math.round((option.votes_count / totalVotes) * 100) : 0
+    }));
+
+    res.json({
+      ...poll,
+      options: optionsWithPercent,
+      total_votes: totalVotes,
+      user_has_voted: options.some(option => option.user_voted)
+    });
+  } catch (err) {
+    console.error('Hiba a szavazás lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
 
 // ✅ EGYSZERŰ TESZT VÉGPONT
 app.get("/test", (req, res) => {

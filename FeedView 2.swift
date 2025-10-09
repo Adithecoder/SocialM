@@ -21,11 +21,12 @@ class Post2: ObservableObject, Identifiable {
     @Published var userLiked: Bool = false
     @Published var userCommented: Bool = false
     @Published var userSaved: Bool = false
+    @Published var poll: Poll? // 👈 ÚJ: Szavazás hozzáadása
     let userId: Int
     let username: String
     let createdAt: Date
     
-    init(serverId: Int? = nil, content: String? = nil, image: UIImage? = nil, videoURL: URL? = nil, userId: Int, username: String, createdAt: Date = Date()) {
+    init(serverId: Int? = nil, content: String? = nil, image: UIImage? = nil, videoURL: URL? = nil, userId: Int, username: String, createdAt: Date = Date(), poll: Poll? = nil) {
         self.serverId = serverId
         self.content = content
         self.image = image
@@ -33,6 +34,7 @@ class Post2: ObservableObject, Identifiable {
         self.userId = userId
         self.username = username
         self.createdAt = createdAt
+        self.poll = poll // 👈 ÚJ
     }
     
     // Konvertálás szerverről érkező adatokból
@@ -47,22 +49,46 @@ class Post2: ObservableObject, Identifiable {
             videoURL: nil,
             userId: serverPost.user_id,
             username: serverPost.username ?? "Ismeretlen",
-            
             createdAt: createdAt
         )
         self.likes = serverPost.likes
         self.comments = serverPost.comments?.map { $0.content } ?? []
         
         if let currentUserId = UserDefaults.standard.object(forKey: "user_id") as? Int {
-            // Ellenőrizd, hogy a currentUserId szerepel-e a like-ok vagy kommentek között
-            // Ez egy egyszerűsített verzió, a valós implementáció a szerver adataitól függ
             self.userLiked = serverPost.user_liked ?? false
             self.userCommented = serverPost.user_commented ?? false
             self.userSaved = serverPost.user_saved ?? false
         }
+        
+        // 👈 ÚJ: Poll adatok betöltése
+        if let serverPoll = serverPost.poll {
+            var pollOptions: [PollOption] = []
+            for serverOption in serverPoll.options {
+                let option = PollOption(
+                    id: serverOption.id,
+                    text: serverOption.option_text,
+                    votesCount: serverOption.votes_count,
+                    percentage: serverOption.percentage,
+                    userVoted: serverOption.user_voted
+                )
+                pollOptions.append(option)
+            }
+            
+            let pollCreatedAt = dateFormatter.date(from: serverPoll.created_at) ?? Date()
+            
+            self.poll = Poll(
+                id: serverPoll.id,
+                question: serverPoll.question,
+                options: pollOptions,
+                totalVotes: serverPoll.total_votes,
+                userHasVoted: serverPoll.user_has_voted,
+                postId: serverPoll.post_id,
+                userId: serverPoll.user_id,
+                createdAt: pollCreatedAt
+            )
+        }
     }
 }
-
 class PostsViewModel2: ObservableObject {
     @Published var posts: [Post2] = []
     @Published var isLoading = false
@@ -155,16 +181,51 @@ class PostsViewModel2: ObservableObject {
             }
         }
     }
+    func unlikePost(_ post2: Post2) {
+           guard let postId = post2.serverId else { return }
+           
+           // Ha a felhasználó még nem likeolta, ne csinálj semmit
+           if !post2.userLiked {
+               return
+           }
+           
+           networkManager.likePost(postId, userId: post2.userId) { result in
+               DispatchQueue.main.async {
+                   switch result {
+                   case .success:
+                       if let index = self.posts.firstIndex(where: { $0.id == post2.id }) {
+                           // Csak akkor csökkentjük a like számát, ha likeolta
+                           if self.posts[index].userLiked {
+                               self.posts[index].likes -= 1
+                               self.posts[index].userLiked = false
+                           }
+                       }
+                   case .failure(let error):
+                       self.errorMessage = "Hiba a like eltávolításakor: \(error.localizedDescription)"
+                       print("Hiba a like eltávolításakor: \(error)")
+                   }
+               }
+           }
+       }
     
     func likePost(_ post2: Post2) {
         guard let postId = post2.serverId else { return }
+        
+        // Ha a felhasználó már likeolta, ne csinálj semmit
+        if post2.userLiked {
+            return
+        }
         
         networkManager.likePost(postId, userId: post2.userId) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
                     if let index = self.posts.firstIndex(where: { $0.id == post2.id }) {
-                        self.posts[index].likes += 1
+                        // Csak akkor növeljük a like számát, ha még nem likeolta
+                        if !self.posts[index].userLiked {
+                            self.posts[index].likes += 1
+                            self.posts[index].userLiked = true
+                        }
                     }
                 case .failure(let error):
                     self.errorMessage = "Hiba a like hozzáadásakor: \(error.localizedDescription)"
@@ -211,6 +272,10 @@ struct FeedView2: View {
     
     @State private var showUserSearch = false
 
+    
+    @State private var showPollCreation = false
+    @State private var selectedPostForPoll: Post2?
+    
     var sortedPosts2: [Post2] {
         let filtered = postsViewModel2.posts.filter { post2 in
             searchText2.isEmpty ||
@@ -322,7 +387,12 @@ struct FeedView2: View {
                      
                 }
                 
-                
+                .sheet(isPresented: $showPollCreation) {
+                    PollCreationView(isPresented: $showPollCreation) { question, options in
+                        createPoll(question: question, options: options)
+                    }
+                }
+
                 .sheet(isPresented: $showImagePicker2) {
                     ImagePickerView(image: $selectedImage2)
                 }
@@ -360,6 +430,36 @@ struct FeedView2: View {
     }
 
     // MARK: - Subviews
+    private func createPoll(question: String, options: [String]) {
+        guard let userId = UserDefaults.standard.object(forKey: "user_id") as? Int else { return }
+        
+        // Ha van kiválasztott poszt, ahhoz kapcsoljuk, különben új posztot hozunk létre
+        if let post = selectedPostForPoll {
+            // Meglévő poszthoz adjuk hozzá a szavazást
+            NetworkManager.shared.createPoll(
+                postId: post.serverId ?? 0,
+                question: question,
+                options: options,
+                userId: userId
+            ) { result in
+                // Kezeld az eredményt
+            }
+        } else {
+            // Új poszt létrehozása a szavazással
+            let username = UserDefaults.standard.string(forKey: "username") ?? "Felhasználó"
+            let newPost = Post2(
+                content: nil, // Csak szavazás
+                image: nil,
+                videoURL: nil,
+                userId: userId,
+                username: username
+            )
+            
+            // Először hozd létre a posztot, majd add hozzá a szavazást
+            postsViewModel2.addPost(newPost)
+            // Itt majd a szerver válaszából kapott postId-vel hozd létre a szavazást
+        }
+    }
     
     private func loadUnreadCount(userId: Int) {
         NetworkManager.shared.getUnreadMessagesCount(userId: userId) { result in
@@ -396,8 +496,16 @@ struct FeedView2: View {
                     } label: {
                         Label("Videó feltöltése", systemImage: "video")
                     }
+                    
+                    Button {
+                        // Új: Szavazás létrehozása
+                        selectedPostForPoll = nil // Új poszthoz
+                        showPollCreation = true
+                    } label: {
+                        Label("Szavazás létrehozása", systemImage: "chart.bar")
+                    }
                 } label: {
-                    Image(systemName: "folder.circle")
+                    Image(systemName: "ellipsis.circle") // 3 pontos ikon
                         .resizable()
                         .scaledToFit()
                         .frame(maxHeight: 30)
@@ -405,6 +513,8 @@ struct FeedView2: View {
                         .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
                         .padding(.horizontal,5)
                 }
+                
+                
                 
                 if !newPost2.isEmpty || selectedImage2 != nil || selectedVideoURL2 != nil {
                     Button(action: addPost2) {
@@ -645,8 +755,8 @@ struct PostView2: View {
     @ObservedObject var post2: Post2
     @Binding var newComment: String
     @State private var isLiked = false
-    @State private var isCommented = false // 👈 ÚJ
-    @State private var isSaved = false // 👈 ÚJ
+    @State private var isCommented = false
+    @State private var isSaved = false
     let addComment: () -> Void
     let deleteComment: (String) -> Void
     let deletePost: () -> Void
@@ -654,15 +764,6 @@ struct PostView2: View {
     let sharePost: () -> Void
     let showDetail: () -> Void
     
-    // 👇 Kiszámoljuk a megjelenítendő kommenteket
-    private var displayedComments: [String] {
-        Array(post2.comments.prefix(2)) // Maximum 2 komment (így +1 = 3)
-    }
-    
-    private var hasMoreComments: Bool {
-        post2.comments.count > 2 // Van-e több komment
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Felhasználó fejléc
@@ -690,6 +791,15 @@ struct PostView2: View {
                     .foregroundStyle(.blue)
             }
             
+            // 👈 ÚJ: Szavazás megjelenítése
+            if let poll = post2.poll {
+                PollView(poll: poll, onVote: { optionId in
+                    // Szavazás funkció itt lesz implementálva
+                    voteInPoll(pollId: poll.id, optionId: optionId)
+                })
+                .padding(.vertical, 8)
+            }
+            
             // Kép
             if let image = post2.image {
                 Image(uiImage: image)
@@ -708,38 +818,7 @@ struct PostView2: View {
                     .cornerRadius(8)
             }
             
-            // Művelet gombok - ÁTHELYEZVE: lent, vízszintesen
-
-            
-            // Kommentek - MÓDOSÍTOTT
-//            if !post2.comments.isEmpty {
-//                VStack(alignment: .leading) {
-//                    Text("Kommentek:")
-//                        .font(.subheadline)
-//                        .fontWeight(.semibold)
-//                        .padding(.top, 4)
-//
-//                    // 👇 Csak az első 2 kommentet jelenítjük meg
-//                    ForEach(displayedComments, id: \.self) { comment in
-//                        CommentView2(comment: comment, deleteAction: { //deleteComment(comment) })
-//                    }
-                    
-//                    // 👇 "További kommentek" gomb, ha van több
-//                    if hasMoreComments {
-//                        Button(action: showDetail) {
-//                            HStack {
-//                                Text("További \(post2.comments.count - 2) komment //megtekintése")
-//                                    .font(.subheadline)
-//                                    .foregroundColor(.blue)
-//                                Image(systemName: "chevron.right")
-//                                    .font(.caption)
-//                                    .foregroundColor(.blue)
-//                            }
-//                        }
-//                        .padding(.top, 4)
-//                    }
-//                }
-//            }
+            // Művelet gombok
             HStack(spacing: 20) {
                 // Like gomb
                 Button(action: {
@@ -763,49 +842,46 @@ struct PostView2: View {
                 }
                 
                 Button(action: {
-                                    // Komment modal megnyitása vagy kommentálás
-                                    post2.isShared.toggle()
-                                }) {
-                                    VStack {
-                                        Image(systemName: isCommented ? "text.bubble.fill" : "text.bubble")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(height: 24)
-                                            .foregroundStyle(isCommented ?
-                                                LinearGradient(gradient: Gradient(colors: [.red, .orange]), startPoint: .top, endPoint: .bottom) :
-                                                LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
-                                        
-                                        Text("\(post2.comments.count)")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                
-                                // Mentés gomb - FELTÉTELES
-                                Button(action: {
-                                    isSaved.toggle()
-                                    post2.userSaved = isSaved // 👈 Frissítjük a modellt
-                                    // Itt hívd meg a mentés funkciót
-                                }) {
-                                    VStack {
-                                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(height: 24)
-                                            .foregroundStyle(isSaved ?
-                                                LinearGradient(gradient: Gradient(colors: [.red, .orange]), startPoint: .top, endPoint: .bottom) :
-                                                LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
-                                        
-                                        Text("Mentés")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
+                    post2.isShared.toggle()
+                }) {
+                    VStack {
+                        Image(systemName: isCommented ? "text.bubble.fill" : "text.bubble")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 24)
+                            .foregroundStyle(isCommented ?
+                                LinearGradient(gradient: Gradient(colors: [.red, .orange]), startPoint: .top, endPoint: .bottom) :
+                                LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
+                        
+                        Text("\(post2.comments.count)")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                }
+                
+                // Mentés gomb
+                Button(action: {
+                    isSaved.toggle()
+                    post2.userSaved = isSaved
+                }) {
+                    VStack {
+                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 24)
+                            .foregroundStyle(isSaved ?
+                                LinearGradient(gradient: Gradient(colors: [.red, .orange]), startPoint: .top, endPoint: .bottom) :
+                                LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
+                        
+                        Text("Mentés")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                }
                 
                 Spacer()
                 
                 // Kinyitás gomb
-                
                 Button(action: showDetail) {
                     VStack {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -825,59 +901,16 @@ struct PostView2: View {
             .cornerRadius(12)
             .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
             .padding(.vertical, 8)
-            
-            // Új komment
-//            if post2.isShared {
-//                HStack {
-//                    TextField("Szólj hozzá!", text: $newComment)
-//                        .padding()
-//                        .overlay(
-//                            RoundedRectangle(cornerRadius: 20)
-//                                .stroke(LinearGradient(gradient: Gradient(colors: //[.orange, .blue]), startPoint: .top, endPoint: //.bottom), lineWidth: 3))
-//
-//                    Button(action: addComment) {
-//                        Image(systemName: "paperplane.circle")
-//                            .resizable()
-//                            .scaledToFit()
-//                            .frame(height: 30)
-//                            .foregroundStyle(LinearGradient(gradient: //Gradient(colors: [.orange, .blue]), startPoint: //.top, endPoint: .bottom))
-//                            .symbolEffect(.bounce.down.wholeSymbol, options: //.nonRepeating)
-//                            .padding(.horizontal, 5)
-//                    }
-//                    .disabled(newComment.isEmpty)
-//                }
-//                .padding(.top, 8)
-//            }
         }
         .padding()
         .background(Color.white)
         .cornerRadius(12)
         .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
-//        .overlay(
-            // Törlés gomb - jobb felső sarokban
-//            VStack {
-//                Button(action: deletePost) {
-//                    Image(systemName: "trash")
-//                        .resizable()
-//                        .scaledToFit()
-//                        .frame(height: 16)
-//                        .foregroundStyle(LinearGradient(gradient: Gradient(colors: //[.orange, .red]), startPoint: .top, endPoint: .bottom))
-//                        .padding(8)
-//                        .background(Color.white.opacity(0.9))
-//                        .clipShape(Circle())
-//                        .shadow(color: .gray.opacity(0.3), radius: 2, x: 0, y: 1)
-//                }
-//                Spacer()
-//            }
-//            .padding(8),
-//            alignment: .topTrailing
-//        )
         .onAppear {
-            isLiked = post2.likes > 0
+            isLiked = post2.userLiked
+            isCommented = post2.userCommented
+            isSaved = post2.userSaved
         }
-//        .onChange(of: post2.likes) { newLikes in
-//            isLiked = newLikes > 0
-//        }
         .onChange(of: post2.userLiked) { newValue in
             isLiked = newValue
         }
@@ -886,6 +919,40 @@ struct PostView2: View {
         }
         .onChange(of: post2.userSaved) { newValue in
             isSaved = newValue
+        }
+    }
+    
+    // 👈 ÚJ: Szavazás funkció
+    private func voteInPoll(pollId: Int, optionId: Int) {
+        guard let userId = UserDefaults.standard.object(forKey: "user_id") as? Int else { return }
+        
+        NetworkManager.shared.voteInPoll(pollId: pollId, optionId: optionId, userId: userId) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("✅ Szavazat leadva")
+                    // Frissítsd a poll adatait
+                    self.refreshPollData(pollId: pollId)
+                case .failure(let error):
+                    print("❌ Hiba a szavazásnál: \(error)")
+                }
+            }
+        }
+    }
+    
+    private func refreshPollData(pollId: Int) {
+        guard let userId = UserDefaults.standard.object(forKey: "user_id") as? Int else { return }
+        
+        NetworkManager.shared.fetchPoll(pollId: pollId, userId: userId) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let updatedPoll):
+                    // Frissítsd a post poll-ját
+                    post2.poll = updatedPoll
+                case .failure(let error):
+                    print("❌ Hiba a poll frissítésénél: \(error)")
+                }
+            }
         }
     }
 }
@@ -1144,6 +1211,249 @@ struct PostDetailView: View {
         }
     }
 }
+
+// MARK: - Poll Modell
+class Poll: ObservableObject, Identifiable {
+    let id: Int
+    @Published var question: String
+    @Published var options: [PollOption]
+    @Published var totalVotes: Int
+    @Published var userHasVoted: Bool
+    let postId: Int
+    let userId: Int
+    let createdAt: Date
+    
+    init(id: Int, question: String, options: [PollOption], totalVotes: Int, userHasVoted: Bool, postId: Int, userId: Int, createdAt: Date = Date()) {
+        self.id = id
+        self.question = question
+        self.options = options
+        self.totalVotes = totalVotes
+        self.userHasVoted = userHasVoted
+        self.postId = postId
+        self.userId = userId
+        self.createdAt = createdAt
+    }
+}
+
+class PollOption: ObservableObject, Identifiable {
+    let id: Int
+    @Published var text: String
+    @Published var votesCount: Int
+    @Published var percentage: Int
+    @Published var userVoted: Bool
+    
+    init(id: Int, text: String, votesCount: Int = 0, percentage: Int = 0, userVoted: Bool = false) {
+        self.id = id
+        self.text = text
+        self.votesCount = votesCount
+        self.percentage = percentage
+        self.userVoted = userVoted
+    }
+}
+
+// MARK: - Poll Creation View
+struct PollCreationView: View {
+    @Binding var isPresented: Bool
+    let onCreatePoll: (String, [String]) -> Void
+    
+    @State private var question: String = ""
+    @State private var options: [String] = ["", ""]
+    @State private var showError: Bool = false
+    @State private var errorMessage: String = ""
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Szavazás kérdése")) {
+                    TextField("Add meg a kérdést...", text: $question)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                
+                Section(header: Text("Választható opciók")) {
+                    ForEach(0..<options.count, id: \.self) { index in
+                        HStack {
+                            TextField("Opció \(index + 1)", text: $options[index])
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                            
+                            if options.count > 2 {
+                                Button(action: {
+                                    removeOption(at: index)
+                                }) {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Button(action: addOption) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(.green)
+                            Text("Új opció hozzáadása")
+                        }
+                    }
+                    .disabled(options.count >= 6)
+                }
+                
+                Section {
+                    Button("Szavazás létrehozása") {
+                        createPoll()
+                    }
+                    .disabled(!isValidPoll)
+                    .frame(maxWidth: .infinity)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(isValidPoll ? Color.blue : Color.gray)
+                    .cornerRadius(10)
+                }
+            }
+            .navigationTitle("Új szavazás")
+            .navigationBarItems(
+                leading: Button("Mégse") {
+                    isPresented = false
+                },
+                trailing: Button("Kész") {
+                    createPoll()
+                }
+                .disabled(!isValidPoll)
+            )
+            .alert("Hiba", isPresented: $showError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
+            }
+        }
+    }
+    
+    private var isValidPoll: Bool {
+        !question.trimmingCharacters(in: .whitespaces).isEmpty &&
+        options.filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }).count >= 2
+    }
+    
+    private func addOption() {
+        if options.count < 6 {
+            options.append("")
+        }
+    }
+    
+    private func removeOption(at index: Int) {
+        if options.count > 2 {
+            options.remove(at: index)
+        }
+    }
+    
+    private func createPoll() {
+        let validOptions = options
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        
+        guard validOptions.count >= 2 else {
+            errorMessage = "Legalább 2 opciót meg kell adni!"
+            showError = true
+            return
+        }
+        
+        guard !question.trimmingCharacters(in: .whitespaces).isEmpty else {
+            errorMessage = "A kérdés megadása kötelező!"
+            showError = true
+            return
+        }
+        
+        onCreatePoll(question, validOptions)
+        isPresented = false
+    }
+}
+
+// MARK: - Poll Display View
+struct PollView: View {
+    @ObservedObject var poll: Poll
+    let onVote: (Int) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(poll.question)
+                .font(.headline)
+                .padding(.bottom, 4)
+            
+            ForEach(poll.options) { option in
+                PollOptionView(
+                    option: option,
+                    totalVotes: poll.totalVotes,
+                    userHasVoted: poll.userHasVoted,
+                    onVote: {
+                        if !poll.userHasVoted {
+                            onVote(option.id)
+                        }
+                    }
+                )
+            }
+            
+            HStack {
+                Text("\(poll.totalVotes) szavazat")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                
+                Spacer()
+                
+                if poll.userHasVoted {
+                    Text("✓ Szavazat leadva")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+            }
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(12)
+    }
+}
+
+struct PollOptionView: View {
+    @ObservedObject var option: PollOption
+    let totalVotes: Int
+    let userHasVoted: Bool
+    let onVote: () -> Void
+    
+    var body: some View {
+        Button(action: onVote) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(option.text)
+                        .font(.body)
+                        .foregroundColor(userHasVoted ? .primary : .blue)
+                    
+                    if userHasVoted {
+                        HStack {
+                            ProgressView(value: Double(option.percentage), total: 100)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                                .frame(height: 6)
+                            
+                            Text("\(option.percentage)%")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                if userHasVoted && option.userVoted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(userHasVoted && option.userVoted ? Color.green : Color.gray.opacity(0.3), lineWidth: 1)
+                    .background(userHasVoted && option.userVoted ? Color.green.opacity(0.1) : Color.clear)
+            )
+        }
+        .disabled(userHasVoted)
+    }
+}
+
 
 struct CommentView2: View {
     let comment: String

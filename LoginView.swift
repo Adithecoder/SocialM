@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import DesignSystem
+
 
 struct LoginView: View {
     @Binding var isLoggedIn: Bool
@@ -20,28 +22,45 @@ struct LoginView: View {
         NavigationView {
             VStack(spacing: 20) {
                 Text("Bejelentkezés")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+                    .font(.custom("gunplay", size: 40))
+                    .foregroundStyle(
+                            .linearGradient(
+                                colors: [.orange, .blue],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ))
                     .padding(.top, 40)
 
                 VStack(spacing: 16) {
                     TextField("Felhasználónév", text: $username)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.custom("OrelegaOne-Regular", size: 18))
+                        .padding()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                            
+                        )
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(color: .blue.opacity(0.3), radius: 5, x: 0, y: 2)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
 
                     SecureField("Jelszó", text: $password)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.custom("OrelegaOne-Regular", size: 18))
+                        .padding()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                            
+                        )
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(color: .blue.opacity(0.3), radius: 5, x: 0, y: 2)
                 }
                 .padding(.horizontal)
 
-                // Szerver információk
-                VStack {
-                    Text("Szerver: \(NetworkManager.shared.baseURL)")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                .padding()
+
 
                 if isLoading {
                     ProgressView()
@@ -50,40 +69,46 @@ struct LoginView: View {
                 } else {
                     Button(action: login) {
                         Text("Bejelentkezés")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
-                            .cornerRadius(10)
+                            .padding(.horizontal,70)
+                            .font(.custom("Jellee", size: 18))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                                
+                            )
+                            .foregroundStyle(password.isEmpty ? Color.white.opacity(0.6): Color.white)
+                            .background((LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom)))
+                            .cornerRadius(20)
+                            .shadow(color: .gray.opacity(0.9), radius: 5, x: 0, y: 2)
                     }
                     .padding(.horizontal)
                     .disabled(username.isEmpty || password.isEmpty)
                 }
-
-                NavigationLink(destination: RegisterView(isLoggedIn: $isLoggedIn)) {
-                    Text("Még nincs fiókod? Regisztrálj itt")
-                        .foregroundColor(.blue)
-                        .font(.subheadline)
-                }
-                .padding(.top, 20)
-
-                // Debug info
                 if !debugInfo.isEmpty {
                     VStack {
-                        Text("Debug Info:")
-                            .font(.caption)
-                            .fontWeight(.bold)
                         Text(debugInfo)
-                            .font(.caption)
+                            .font(.system(size: 16))
                             .foregroundColor(.red)
                             .multilineTextAlignment(.center)
                     }
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
                     .padding(.horizontal)
                 }
+                NavigationLink(destination: RegisterView(isLoggedIn: $isLoggedIn)) {
+                    Text("Még nincs fiókod? Regisztrálj itt")
+                        .font(.custom("OrelegaOne-Regular", size: 18))
+                        .padding()
+                        .foregroundStyle(Color.DesignSystem.szurke)
+                        .font(.subheadline)
+                      
+                    
+                }
+                
+                
+                .padding(.top, 20)
+
+                // Debug info
+
 
                 Spacer()
             }
@@ -106,7 +131,8 @@ struct LoginView: View {
         }
 
         isLoading = true
-        debugInfo = "Bejelentkezés indítása..."
+        //Bejelentkezés indítása
+        debugInfo = ""
 
         // Először teszteljük a szerver kapcsolatot
         testServerConnection { success in
@@ -154,7 +180,7 @@ struct LoginView: View {
     }
 
     private func performLogin() {
-        debugInfo = "Bejelentkezési kérés küldése..."
+        debugInfo = ""
 
         NetworkManager.shared.login(username: username, password: password) { result in
             DispatchQueue.main.async {
@@ -180,7 +206,7 @@ struct LoginView: View {
                         self.debugInfo = "Sikeres bejelentkezés"
                     } else {
                         self.alertMessage = loginResponse.message
-                        self.debugInfo = "Szerver hiba: \(loginResponse.message)"
+                        self.debugInfo = " \(loginResponse.message)"
                     }
                     
                 case .failure(let error):
@@ -190,6 +216,25 @@ struct LoginView: View {
                 
                 self.showAlert = true
             }
+        }
+    }
+}
+
+struct StrokeText: View {
+    let text: String
+    let width: CGFloat
+    let color: Color
+
+    var body: some View {
+        ZStack{
+            ZStack{
+                Text(text).offset(x:  width, y:  width)
+                Text(text).offset(x: -width, y: -width)
+                Text(text).offset(x: -width, y:  width)
+                Text(text).offset(x:  width, y: -width)
+            }
+            .foregroundColor(color)
+            Text(text)
         }
     }
 }

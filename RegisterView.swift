@@ -22,36 +22,79 @@ struct RegisterView: View {
         NavigationView {
             VStack(spacing: 20) {
                 Text("Regisztráció")
-                    .font(.largeTitle)
+                    .font(.custom("gunplay", size: 40))
+                    .foregroundStyle(
+                            .linearGradient(
+                                colors: [.orange, .blue],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ))
                     .fontWeight(.bold)
                     .padding(.top, 40)
 
                 VStack(spacing: 16) {
                     TextField("Felhasználónév", text: $username)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.custom("OrelegaOne-Regular", size: 18))
+                        .padding()
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                            
+                        )
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(color: .blue.opacity(0.3), radius: 5, x: 0, y: 2)
 
-                    TextField("E-mail", text: $email)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    TextField("E-mail", text: $email)               .font(.custom("OrelegaOne-Regular", size: 18))
+
+                        .padding()
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                            
+                        )
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(color: .blue.opacity(0.3), radius: 5, x: 0, y: 2)
 
                     SecureField("Jelszó", text: $password)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.custom("OrelegaOne-Regular", size: 18))
+                        .padding()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                            
+                        )
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(color: .blue.opacity(0.3), radius: 5, x: 0, y: 2)
 
                     SecureField("Jelszó megerősítése", text: $confirmPassword)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.custom("OrelegaOne-Regular", size: 18))
+                        .padding()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                            
+                        )
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(color: .blue.opacity(0.3), radius: 5, x: 0, y: 2)
                 }
+                
                 .padding(.horizontal)
 
                 // Szerver információk
-                VStack {
-                    Text("Szerver: \(NetworkManager.shared.baseURL)")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                .padding()
+//                VStack {
+//                    Text("Szerver: //\(NetworkManager.shared.baseURL)")
+//                        .font(.caption)
+//                        .foregroundColor(.gray)
+//                }
+//                .padding()
 
                 if isLoading {
                     ProgressView()
@@ -60,16 +103,36 @@ struct RegisterView: View {
                 } else {
                     Button(action: register) {
                         Text("Regisztráció")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
-                            .cornerRadius(10)
+                            .padding(.horizontal,70)
+                            .font(.custom("Jellee", size: 18))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 5)
+                                
+                            )
+                            .foregroundStyle(isFormValid ? Color.white: Color.white.opacity(0.6))
+                            .background((LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom)))
+                            .cornerRadius(20)
+                            .shadow(color: .gray.opacity(0.9), radius: 5, x: 0, y: 2)
                     }
                     .padding(.horizontal)
                     .disabled(!isFormValid)
                 }
+//                Circle()
+//                    .strokeBorder(
+//                        AngularGradient(gradient: //Gradient(colors: [.red, .yellow, //.green, .blue, .purple, .red]), //center: .center, startAngle: .zero, //endAngle: .degrees(360)),
+//                        lineWidth: 50
+//                    )
+//                    .frame(width: 200, height: 200)
+                VStack {
+                    Text("Regisztrációddal elfogad alkalmazásunk általános szerződési feltételeit. Bővebben a ... oldalon olvashatsz.")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                .padding(.top,200)
+
+                
 
                 // Debug info
                 if !debugInfo.isEmpty {
@@ -197,7 +260,20 @@ struct RegisterView: View {
         }
     }
 }
-
+extension View {
+    func multicolorGlow() -> some View {
+        ZStack {
+            ForEach(0..<2) { i in
+                Rectangle()
+                    .fill(AngularGradient(gradient: Gradient(colors:
+[Color.blue, Color.purple, Color.orange, Color.red]), center: .center))
+                    .frame(width: 400, height: 300)
+                    .mask(self.blur(radius: 20))
+                    .overlay(self.blur(radius: 5 - CGFloat(i * 5)))
+            }
+        }
+    }
+}
 struct RegisterView_Previews: PreviewProvider {
     static var previews: some View {
         RegisterView(isLoggedIn: .constant(false))

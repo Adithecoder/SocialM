@@ -297,9 +297,11 @@ class NetworkManager: ObservableObject {
     
     
     // MARK: - Felhasználó keresés
-    // NetworkManager.swift - JAVÍTOTT keresési függvény
     func searchUsers(query: String, completion: @escaping (Result<[SearchedUser], Error>) -> Void) {
-        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+        // URL encoding javítása
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty,
+              let encodedQuery = trimmedQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "\(baseURL)/users/search?query=\(encodedQuery)") else {
             completion(.failure(NetworkError.invalidURL))
             return
@@ -309,21 +311,24 @@ class NetworkManager: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 30
         
         URLSession.shared.dataTask(with: request) { data, response, error in
+            // Debug információk
+            if let error = error {
+                print("❌ Hálózati hiba: \(error.localizedDescription)")
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 HTTP Status: \(httpResponse.statusCode)")
+            }
+            
             DispatchQueue.main.async {
                 if let error = error {
                     print("❌ Hálózati hiba: \(error.localizedDescription)")
                     completion(.failure(error))
                     return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse {
-                    print("📡 HTTP Status: \(httpResponse.statusCode)")
-                    if httpResponse.statusCode != 200 {
-                        print("❌ HTTP Hibakód: \(httpResponse.statusCode)")
-                    }
                 }
                 
                 guard let data = data else {
@@ -334,7 +339,7 @@ class NetworkManager: ObservableObject {
                 
                 // Debug: írjuk ki a nyers választ
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("📨 Szerver válasz: \(responseString.prefix(500))...") // Csak az első 500 karakter
+                    print("📨 Szerver válasz: \(responseString)")
                 }
                 
                 do {
@@ -345,9 +350,15 @@ class NetworkManager: ObservableObject {
                     print("❌ JSON dekódolási hiba: \(error)")
                     print("❌ Hiba részletei: \(error.localizedDescription)")
                     
-                    // Próbáljuk meg debug-olni, mi jön a szervertől
+                    // Alternatív próbálkozás: próbáljuk meg string-ként értelmezni
                     if let responseString = String(data: data, encoding: .utf8) {
-                        print("❌ Nyers válasz: \(responseString)")
+                        print("❌ Nyers válasz stringként: \(responseString)")
+                        
+                        // Ha üres array jön vissza
+                        if responseString == "[]" {
+                            completion(.success([]))
+                            return
+                        }
                     }
                     
                     completion(.failure(error))
@@ -557,6 +568,131 @@ class NetworkManager: ObservableObject {
                 } catch {
                     completion(.failure(error))
                 }
+            }
+        }.resume()
+    }
+}
+// NetworkManager.swift - JAVÍTOTT VERZIÓ
+extension NetworkManager {
+    func createPoll(postId: Int, question: String, options: [String], userId: Int, completion: @escaping (Result<Int, Error>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/posts/\(postId)/poll") else {
+            completion(.failure(NSError(domain: "PollError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        
+        let parameters: [String: Any] = [
+            "user_id": userId,
+            "question": question,
+            "options": options.map { ["text": $0] }
+        ]
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(NSError(domain: "PollError", code: -2, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
+                return
+            }
+            
+            // Debug: írd ki a választ
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📊 Poll creation response: \(responseString)")
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let pollId = json["poll_id"] as? Int {
+                    completion(.success(pollId))
+                } else {
+                    completion(.failure(NSError(domain: "PollError", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])))
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    func voteInPoll(pollId: Int, optionId: Int, userId: Int, completion: @escaping (Result<Bool, Error>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/polls/\(pollId)/vote") else {
+            completion(.failure(NSError(domain: "PollError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        
+        let parameters: [String: Any] = [
+            "user_id": userId,
+            "option_id": optionId
+        ]
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                completion(.success(true))
+            } else {
+                completion(.failure(NSError(domain: "PollError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Vote failed"])))
+            }
+        }.resume()
+    }
+    
+    func fetchPoll(pollId: Int, userId: Int, completion: @escaping (Result<Poll, Error>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/polls/\(pollId)?user_id=\(userId)") else {
+            completion(.failure(NSError(domain: "PollError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(NSError(domain: "PollError", code: -2, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
+                return
+            }
+            
+            // Debug: írd ki a választ
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📊 Fetch poll response: \(responseString)")
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let poll = PollParser.parsePoll(from: json, userId: userId) {
+                    completion(.success(poll))
+                } else {
+                    completion(.failure(NSError(domain: "PollError", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to parse poll data"])))
+                }
+            } catch {
+                completion(.failure(error))
             }
         }.resume()
     }
@@ -776,6 +912,76 @@ extension NetworkManager {
         }.resume()
     }
 }
+// MARK: - Poll Parser
+class PollParser {
+    static func parsePoll(from json: [String: Any], userId: Int) -> Poll? {
+        guard let id = json["id"] as? Int,
+              let question = json["question"] as? String,
+              let postId = json["post_id"] as? Int,
+              let pollUserId = json["user_id"] as? Int,
+              let optionsArray = json["options"] as? [[String: Any]] else {
+            return nil
+        }
+        
+        let totalVotes = json["total_votes"] as? Int ?? 0
+        let userHasVoted = json["user_has_voted"] as? Bool ?? false
+        
+        var pollOptions: [PollOption] = []
+        
+        for optionDict in optionsArray {
+            if let option = parsePollOption(from: optionDict) {
+                pollOptions.append(option)
+            }
+        }
+        
+        let dateFormatter = ISO8601DateFormatter()
+        let createdAt = dateFormatter.date(from: json["created_at"] as? String ?? "") ?? Date()
+        
+        return Poll(
+            id: id,
+            question: question,
+            options: pollOptions,
+            totalVotes: totalVotes,
+            userHasVoted: userHasVoted,
+            postId: postId,
+            userId: pollUserId,
+            createdAt: createdAt
+        )
+    }
+    
+    private static func parsePollOption(from json: [String: Any]) -> PollOption? {
+        guard let id = json["id"] as? Int,
+              let text = json["option_text"] as? String else {
+            return nil
+        }
+        
+        let votesCount = json["votes_count"] as? Int ?? 0
+        let percentage = json["percentage"] as? Int ?? 0
+        let userVoted = json["user_voted"] as? Bool ?? false
+        
+        let option = PollOption(
+            id: id,
+            text: text,
+            votesCount: votesCount,
+            percentage: percentage,
+            userVoted: userVoted
+        )
+        
+        return option
+    }
+    
+    static func parsePollList(from jsonArray: [[String: Any]], userId: Int) -> [Poll] {
+        var polls: [Poll] = []
+        
+        for pollDict in jsonArray {
+            if let poll = parsePoll(from: pollDict, userId: userId) {
+                polls.append(poll)
+            }
+        }
+        
+        return polls
+    }
+}
 // MARK: - Adatmodellek
 
 struct LoginResponse: Codable {
@@ -807,6 +1013,8 @@ struct ServerPost: Codable, Identifiable {
     let user_liked: Bool?
     let user_commented: Bool?
     let user_saved: Bool?
+    let poll: ServerPoll? // 👈 ÚJ: Szavazás adatai
+
 }
 
 struct ServerComment: Codable, Identifiable {
@@ -816,6 +1024,24 @@ struct ServerComment: Codable, Identifiable {
     let username: String?
     let content: String
     let created_at: String
+}
+struct ServerPoll: Codable {
+    let id: Int
+    let question: String
+    let options: [ServerPollOption]
+    let total_votes: Int
+    let user_has_voted: Bool
+    let post_id: Int
+    let user_id: Int
+    let created_at: String
+}
+
+struct ServerPollOption: Codable {
+    let id: Int
+    let option_text: String
+    let votes_count: Int
+    let percentage: Int
+    let user_voted: Bool
 }
 
 struct User: Codable {
@@ -845,17 +1071,30 @@ struct SearchedUser: Codable, Identifiable {
     let created_at: String
     let last_login: String?
     
-    // Custom initializer for better error handling
+    // Rugalmas dátumkezelés
     enum CodingKeys: String, CodingKey {
         case id, username, email, created_at, last_login
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        
         id = try container.decode(Int.self, forKey: .id)
         username = try container.decode(String.self, forKey: .username)
         email = try container.decodeIfPresent(String.self, forKey: .email)
-        created_at = try container.decode(String.self, forKey: .created_at)
-        last_login = try container.decodeIfPresent(String.self, forKey: .last_login)
+        
+        // Rugalmas dátumkezelés
+        do {
+            created_at = try container.decode(String.self, forKey: .created_at)
+        } catch {
+            created_at = "Ismeretlen dátum"
+        }
+        
+        do {
+            last_login = try container.decodeIfPresent(String.self, forKey: .last_login)
+        } catch {
+            last_login = nil
+        }
     }
 }
+
