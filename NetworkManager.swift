@@ -294,7 +294,85 @@ class NetworkManager: ObservableObject {
             }
         }.resume()
     }
-    
+    func fetchPostsWithDebug(completion: @escaping (Result<[ServerPost], Error>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/posts") else {
+            completion(.failure(NetworkError.invalidURL))
+            return
+        }
+        
+        print("🔍 FetchPosts URL: \(url.absoluteString)")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 30
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            // Debug információk
+            if let error = error {
+                print("❌ Hálózati hiba: \(error.localizedDescription)")
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 HTTP Status: \(httpResponse.statusCode)")
+            }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let data = data else {
+                    completion(.failure(NetworkError.noData))
+                    return
+                }
+                
+                // Részletes debug
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("📨 Szerver válasz teljes hossz: \(responseString.count) karakter")
+                    print("📨 Első 500 karakter: \(responseString.prefix(500))")
+                    
+                    // Nézzük meg, van-e poll a válaszban
+                    if responseString.contains("poll") {
+                        print("✅ Poll adatok észlelve a válaszban!")
+                    }
+                }
+                
+                do {
+                    let posts = try JSONDecoder().decode([ServerPost].self, from: data)
+                    print("✅ Sikeres dekódolás: \(posts.count) bejegyzés")
+                    
+                    // Ellenőrizzük a poll adatokat
+                    let postsWithPoll = posts.filter { $0.poll != nil }
+                    print("📊 \(postsWithPoll.count) bejegyzés tartalmaz szavazást")
+                    
+                    completion(.success(posts))
+                } catch {
+                    print("❌ JSON dekódolási hiba: \(error)")
+                    print("❌ Hiba részletei: \(error.localizedDescription)")
+                    
+                    // További debug információ
+                    if let decodingError = error as? DecodingError {
+                        switch decodingError {
+                        case .keyNotFound(let key, let context):
+                            print("❌ Hiányzó kulcs: \(key) - \(context)")
+                        case .typeMismatch(let type, let context):
+                            print("❌ Típus hiba: \(type) - \(context)")
+                        case .valueNotFound(let type, let context):
+                            print("❌ Hiányzó érték: \(type) - \(context)")
+                        case .dataCorrupted(let context):
+                            print("❌ Sérült adat: \(context)")
+                        @unknown default:
+                            print("❌ Ismeretlen dekódolási hiba")
+                        }
+                    }
+                    
+                    completion(.failure(error))
+                }
+            }
+        }.resume()
+    }
     
     // MARK: - Felhasználó keresés
     func searchUsers(query: String, completion: @escaping (Result<[SearchedUser], Error>) -> Void) {
@@ -1013,8 +1091,37 @@ struct ServerPost: Codable, Identifiable {
     let user_liked: Bool?
     let user_commented: Bool?
     let user_saved: Bool?
-    let poll: ServerPoll? // 👈 ÚJ: Szavazás adatai
-
+    let poll: ServerPoll?
+    
+    // Rugalmas inicializálás hiányzó mezők esetén
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(Int.self, forKey: .id)
+        user_id = try container.decode(Int.self, forKey: .user_id)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        content = try container.decodeIfPresent(String.self, forKey: .content)
+        image_url = try container.decodeIfPresent(String.self, forKey: .image_url)
+        video_url = try container.decodeIfPresent(String.self, forKey: .video_url)
+        
+        // Rugalmas likes kezelés
+        do {
+            likes = try container.decode(Int.self, forKey: .likes)
+        } catch {
+            likes = 0
+        }
+        
+        created_at = try container.decode(String.self, forKey: .created_at)
+        comments = try container.decodeIfPresent([ServerComment].self, forKey: .comments) ?? []
+        user_liked = try container.decodeIfPresent(Bool.self, forKey: .user_liked) ?? false
+        user_commented = try container.decodeIfPresent(Bool.self, forKey: .user_commented) ?? false
+        user_saved = try container.decodeIfPresent(Bool.self, forKey: .user_saved) ?? false
+        poll = try container.decodeIfPresent(ServerPoll.self, forKey: .poll)
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, user_id, username, content, image_url, video_url, likes, created_at, comments, user_liked, user_commented, user_saved, poll
+    }
 }
 
 struct ServerComment: Codable, Identifiable {
@@ -1024,24 +1131,86 @@ struct ServerComment: Codable, Identifiable {
     let username: String?
     let content: String
     let created_at: String
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(Int.self, forKey: .id)
+        post_id = try container.decode(Int.self, forKey: .post_id)
+        user_id = try container.decode(Int.self, forKey: .user_id)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        content = try container.decode(String.self, forKey: .content)
+        created_at = try container.decode(String.self, forKey: .created_at)
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, post_id, user_id, username, content, created_at
+    }
 }
 struct ServerPoll: Codable {
     let id: Int
+    let post_id: Int
+    let user_id: Int
     let question: String
+    let created_at: String
     let options: [ServerPollOption]
     let total_votes: Int
     let user_has_voted: Bool
-    let post_id: Int
-    let user_id: Int
-    let created_at: String
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(Int.self, forKey: .id)
+        post_id = try container.decode(Int.self, forKey: .post_id)
+        user_id = try container.decode(Int.self, forKey: .user_id)
+        question = try container.decode(String.self, forKey: .question)
+        created_at = try container.decode(String.self, forKey: .created_at)
+        options = try container.decode([ServerPollOption].self, forKey: .options)
+        
+        // Rugalmas total_votes kezelés
+        do {
+            total_votes = try container.decode(Int.self, forKey: .total_votes)
+        } catch {
+            total_votes = 0
+        }
+        
+        // Rugalmas user_has_voted kezelés
+        do {
+            user_has_voted = try container.decode(Bool.self, forKey: .user_has_voted)
+        } catch {
+            user_has_voted = false
+        }
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, post_id, user_id, question, created_at, options, total_votes, user_has_voted
+    }
 }
 
 struct ServerPollOption: Codable {
     let id: Int
+    let poll_id: Int
     let option_text: String
     let votes_count: Int
-    let percentage: Int
-    let user_voted: Bool
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(Int.self, forKey: .id)
+        poll_id = try container.decode(Int.self, forKey: .poll_id)
+        option_text = try container.decode(String.self, forKey: .option_text)
+        
+        // Rugalmas votes_count kezelés
+        do {
+            votes_count = try container.decode(Int.self, forKey: .votes_count)
+        } catch {
+            votes_count = 0
+        }
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, poll_id, option_text, votes_count
+    }
 }
 
 struct User: Codable {

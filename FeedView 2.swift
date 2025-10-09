@@ -45,12 +45,13 @@ class Post2: ObservableObject, Identifiable {
         self.init(
             serverId: serverPost.id,
             content: serverPost.content,
-            image: nil,
-            videoURL: nil,
+            image: nil, // Később implementálhatod a képbetöltést
+            videoURL: nil, // Később implementálhatod a videóbetöltést
             userId: serverPost.user_id,
             username: serverPost.username ?? "Ismeretlen",
             createdAt: createdAt
         )
+        
         self.likes = serverPost.likes
         self.comments = serverPost.comments?.map { $0.content } ?? []
         
@@ -60,7 +61,7 @@ class Post2: ObservableObject, Identifiable {
             self.userSaved = serverPost.user_saved ?? false
         }
         
-        // 👈 ÚJ: Poll adatok betöltése
+        // 👈 JAVÍTOTT: Poll adatok betöltése
         if let serverPoll = serverPost.poll {
             var pollOptions: [PollOption] = []
             for serverOption in serverPoll.options {
@@ -68,10 +69,18 @@ class Post2: ObservableObject, Identifiable {
                     id: serverOption.id,
                     text: serverOption.option_text,
                     votesCount: serverOption.votes_count,
-                    percentage: serverOption.percentage,
-                    userVoted: serverOption.user_voted
+                    percentage: 0, // Ezt később számoljuk
+                    userVoted: false // Ezt később állítjuk
                 )
                 pollOptions.append(option)
+            }
+            
+            // Százalékok számítása
+            let totalVotes = serverPoll.total_votes
+            if totalVotes > 0 {
+                for option in pollOptions {
+                    option.percentage = Int(Double(option.votesCount) / Double(totalVotes) * 100)
+                }
             }
             
             let pollCreatedAt = dateFormatter.date(from: serverPoll.created_at) ?? Date()
@@ -80,7 +89,7 @@ class Post2: ObservableObject, Identifiable {
                 id: serverPoll.id,
                 question: serverPoll.question,
                 options: pollOptions,
-                totalVotes: serverPoll.total_votes,
+                totalVotes: totalVotes,
                 userHasVoted: serverPoll.user_has_voted,
                 postId: serverPoll.post_id,
                 userId: serverPoll.user_id,
@@ -118,22 +127,24 @@ class PostsViewModel2: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        networkManager.fetchPosts { result in
+        // Használd a debug verziót először
+        networkManager.fetchPostsWithDebug { result in
             DispatchQueue.main.async {
                 self.isLoading = false
                 
                 switch result {
                 case .success(let serverPosts):
                     self.posts = serverPosts.map { Post2(from: $0) }
+                    print("✅ Bejegyzések betöltve: \(self.posts.count)")
                 case .failure(let error):
                     self.errorMessage = "Hiba a bejegyzések betöltésekor: \(error.localizedDescription)"
-                    print("Hiba a bejegyzések betöltésekor: \(error)")
+                    print("❌ Hiba a bejegyzések betöltésekor: \(error)")
                 }
             }
         }
     }
     
-    func addPost(_ post2: Post2) {
+    func addPost(_ post2: Post2, completion: ((Result<Int, Error>) -> Void)? = nil) {
         networkManager.createPost(
             content: post2.content,
             image: post2.image,
@@ -151,12 +162,15 @@ class PostsViewModel2: ObservableObject {
                         image: post2.image,
                         videoURL: post2.videoURL,
                         userId: post2.userId,
-                        username: post2.username
+                        username: post2.username,
+                        poll: post2.poll // 👈 Fontos: poll átadása
                     )
                     self.posts.insert(updatedPost, at: 0)
+                    completion?(.success(postId))
                 case .failure(let error):
                     self.errorMessage = "Hiba a bejegyzés létrehozásakor: \(error.localizedDescription)"
                     print("Hiba a bejegyzés létrehozásakor: \(error)")
+                    completion?(.failure(error))
                 }
             }
         }
@@ -430,34 +444,59 @@ struct FeedView2: View {
     }
 
     // MARK: - Subviews
+    // FeedView2.swift - JAVÍTOTT createPoll függvény
+
     private func createPoll(question: String, options: [String]) {
         guard let userId = UserDefaults.standard.object(forKey: "user_id") as? Int else { return }
         
-        // Ha van kiválasztott poszt, ahhoz kapcsoljuk, különben új posztot hozunk létre
-        if let post = selectedPostForPoll {
-            // Meglévő poszthoz adjuk hozzá a szavazást
-            NetworkManager.shared.createPoll(
-                postId: post.serverId ?? 0,
-                question: question,
-                options: options,
-                userId: userId
-            ) { result in
-                // Kezeld az eredményt
+        let username = UserDefaults.standard.string(forKey: "username") ?? "Felhasználó"
+        
+        // Új poszt létrehozása CSAK a szavazással
+        let newPost = Post2(
+            content: "📊 Szavazás: \(question)", // Adjunk tartalmat a szavazáshoz
+            image: nil,
+            videoURL: nil,
+            userId: userId,
+            username: username
+        )
+        
+        // Először hozd létre a posztot
+        postsViewModel2.addPost(newPost) { result in
+            switch result {
+            case .success(let postId):
+                // Most, hogy megvan a postId, hozzuk létre a szavazást
+                NetworkManager.shared.createPoll(
+                    postId: postId,
+                    question: question,
+                    options: options,
+                    userId: userId
+                ) { pollResult in
+                    DispatchQueue.main.async {
+                        switch pollResult {
+                        case .success(let pollId):
+                            print("✅ Szavazás létrehozva ID: \(pollId)")
+                            // Frissítsük a posztot a poll adataival
+                            if let index = self.postsViewModel2.posts.firstIndex(where: { $0.serverId == postId }) {
+                                // Ideiglenes poll objektum létrehozása
+                                let tempPoll = Poll(
+                                    id: pollId,
+                                    question: question,
+                                    options: options.map { PollOption(id: 0, text: $0) }, // Ideiglenes opciók
+                                    totalVotes: 0,
+                                    userHasVoted: false,
+                                    postId: postId,
+                                    userId: userId
+                                )
+                                self.postsViewModel2.posts[index].poll = tempPoll
+                            }
+                        case .failure(let error):
+                            print("❌ Hiba a szavazás létrehozásakor: \(error)")
+                        }
+                    }
+                }
+            case .failure(let error):
+                print("❌ Hiba a poszt létrehozásakor: \(error)")
             }
-        } else {
-            // Új poszt létrehozása a szavazással
-            let username = UserDefaults.standard.string(forKey: "username") ?? "Felhasználó"
-            let newPost = Post2(
-                content: nil, // Csak szavazás
-                image: nil,
-                videoURL: nil,
-                userId: userId,
-                username: username
-            )
-            
-            // Először hozd létre a posztot, majd add hozzá a szavazást
-            postsViewModel2.addPost(newPost)
-            // Itt majd a szerver válaszából kapott postId-vel hozd létre a szavazást
         }
     }
     
@@ -684,6 +723,7 @@ struct FeedView2: View {
             videoURL: selectedVideoURL2,
             userId: userId,
             username: username
+            
         )
         
         postsViewModel2.addPost(post2)
