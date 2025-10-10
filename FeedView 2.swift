@@ -371,25 +371,23 @@ struct FeedView2: View {
                     sortOptionsSection
                     postList
                     // Módosítsd a FeedView2-ben a popup részét:
-                    if showUserMenu, let post = selectedUserForMenu {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.spring()) {
-                                    showUserMenu = false
-                                }
-                            }
-                            .overlay(
+                    // User menu popup
+                    // A meglévő .overlay rész cseréje a FeedView2-ben:
+                    .overlay(
+                        Group {
+                            if showUserMenu, let post = selectedUserForMenu {
                                 UserMenuPopup(
                                     username: post.username,
                                     userId: post.userId,
                                     isPresented: $showUserMenu,
                                     post: post
                                 )
-                                .offset(y: -100)
-                            )
-                            .ignoresSafeArea()
-                    }
+                                .transition(.scale.combined(with: .opacity))
+                                .animation(.spring(response: 0.1, dampingFraction: 0.8), value: showUserMenu)
+                            }
+                        }
+                    )
+                
                     // 👇 HIDDEN NAVIGATION LINK
                     NavigationLink(
                         destination: Group {
@@ -851,16 +849,26 @@ struct UserMenuPopup: View {
     @State private var messageText = ""
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Fejléc
-            HStack {
+        VStack(alignment: .leading, spacing: 0) {
+            // Fejléc rész
+            HStack(spacing: 12) {
                 Image(systemName: "person.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.blue)
+                    .font(.system(size: 40))
+                    .foregroundStyle(
+                        LinearGradient(
+                            gradient: Gradient(colors: [.orange, .DesignSystem.fokekszin]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 
-                Text(username)
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(username)
+                        .font(.lexend())
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    
+                }
                 
                 Spacer()
                 
@@ -870,104 +878,142 @@ struct UserMenuPopup: View {
                     }
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.gray)
+                        .font(.title2)
+                        .foregroundColor(.black.opacity(0.5))
                 }
             }
-            .padding(.bottom, 4)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
             
-            Divider()
+            // Vékony elválasztó vonal
+            Rectangle()
+                .fill(Color.DesignSystem.szurke)
+                .frame(height: 1)
+                .padding(.horizontal, 8)
             
             // Művelet gombok
-            VStack(spacing: 8) {
-                Button(action: {
-                    showProfile = true
-                    isPresented = false
-                }) {
-                    HStack {
-                        Image(systemName: "person.text.rectangle")
-                            .foregroundColor(.blue)
-                        Text("Profil megtekintése")
-                        Spacer()
+            VStack(spacing: 0) {
+                MenuButton(
+                    icon: "person.text.rectangle",
+                    iconColor: .DesignSystem.fokekszin,
+                    title: "Profil megtekintése",
+                    action: {
+                        showProfile = true
+                        isPresented = false
                     }
-                    .foregroundColor(.primary)
-                }
+                )
                 
-                Button(action: {
-                    showMessageSheet = true
-                    isPresented = false
-                }) {
-                    HStack {
-                        Image(systemName: "message")
-                            .foregroundColor(.green)
-                        Text("Üzenet küldése")
-                        Spacer()
+                MenuButton(
+                    icon: "message",
+                    iconColor: .DesignSystem.oliva,
+                    title: "Üzenet küldése",
+                    action: {
+                        showMessageSheet = true
+                        isPresented = false
                     }
-                    .foregroundColor(.primary)
-                }
+                )
                 
-                Button(action: {
-                    // Követés funkció itt
-                    print("Követés: \(username)")
-                    isPresented = false
-                }) {
-                    HStack {
-                        Image(systemName: "person.badge.plus")
-                            .foregroundColor(.orange)
-                        Text("Követés")
-                        Spacer()
+                MenuButton(
+                    icon: "person.badge.plus",
+                    iconColor: .DesignSystem.barack,
+                    title: "Követés",
+                    action: {
+                        print("Követés: \(username)")
+                        isPresented = false
                     }
-                    .foregroundColor(.primary)
-                }
+                )
                 
                 // Csak a saját posztjainál jelenjen meg
                 if let currentUserId = UserDefaults.standard.object(forKey: "user_id") as? Int,
                    currentUserId == userId {
-                    Button(action: {
-                        // Saját poszt szerkesztése
-                        print("Poszt szerkesztése")
-                        isPresented = false
-                    }) {
-                        HStack {
-                            Image(systemName: "pencil")
-                                .foregroundColor(.purple)
-                            Text("Poszt szerkesztése")
-                            Spacer()
+                    MenuButton(
+                        icon: "pencil",
+                        iconColor: .DesignSystem.bordosszin,
+                        title: "Poszt szerkesztése",
+                        action: {
+                            print("Poszt szerkesztése")
+                            isPresented = false
                         }
-                        .foregroundColor(.primary)
-                    }
+                    )
+                } else {
+                    // Más felhasználó posztjainál
+                    MenuButton(
+                        icon: "exclamationmark.triangle",
+                        iconColor: .DesignSystem.bordosszin,
+                        title: "Jelentés",
+                        action: {
+                            print("Felhasználó jelentése")
+                            isPresented = false
+                        }
+                    )
                 }
             }
         }
-        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 2)
+            RoundedRectangle(cornerRadius: 20)
+                .fill(LinearGradient(
+                    gradient: Gradient(colors: [.blue, .orange]),
+                    startPoint: .bottomLeading,
+                    endPoint: .topLeading
+                ))
+                .shadow(
+                    color: .black.opacity(0.1),
+                    radius: 10,
+                    x: 0,
+                    y: 5
+                )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(
+                    LinearGradient(
+                        gradient: Gradient(colors: [.DesignSystem.barack.opacity(0.9), .DesignSystem.fokekszin.opacity(0.3)]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2
+                )
         )
-        .frame(width: 280)
-        .padding(.horizontal, 40)
-        
-        // Navigáció a profilhoz
-        .background(
-            NavigationLink(
-                destination: UserProfileView(userId: userId, username: username),
-                isActive: $showProfile,
-                label: { EmptyView() }
-            )
-        )
-        
-        // Üzenet küldés sheet
-        .sheet(isPresented: $showMessageSheet) {
-            MessageComposerView(
-                recipientId: userId,
-                recipientName: username,
-                isPresented: $showMessageSheet
-            )
+        .frame(width: 320)
+    }
+}
+
+// Segéd nézet a menü gombokhoz - VILÁGOS változat
+struct MenuButton: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(iconColor)
+                    .frame(width: 24)
+                
+                Text(title)
+                    .font(.lexend2())
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PlainButtonStyle())
+        
+        // Vékony elválasztó vonal
+        Rectangle()
+            .fill(Color.DesignSystem.szurke)
+            .frame(height: 1)
+            .padding(.leading, 56)
     }
 }
 struct UserProfileView: View {
@@ -988,11 +1034,8 @@ struct UserProfileView: View {
                     
                     VStack(alignment: .leading) {
                         Text(username)
-                            .font(.title2)
+                            .font(.lexend())
                             .fontWeight(.bold)
-                        Text("Felhasználó")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
                     }
                     
                     Spacer()
