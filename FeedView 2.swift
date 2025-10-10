@@ -8,6 +8,7 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import DesignSystem
 
 class Post2: ObservableObject, Identifiable {
     let id = UUID()
@@ -257,12 +258,53 @@ class PostsViewModel2: ObservableObject {
         posts.remove(atOffsets: offsets)
     }
 }
-
+// Extension a Date osztályhoz
+extension Date {
+    func timeAgoDisplay() -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: self, to: now)
+        
+        // Ha ugyanazon a napon van
+        if calendar.isDateInToday(self) {
+            if let hours = components.hour, hours > 0 {
+                return "\(hours) órája"
+            } else if let minutes = components.minute, minutes > 0 {
+                return "\(minutes) perce"
+            } else {
+                return "Épp most"
+            }
+        }
+        // Ha tegnapi
+        else if calendar.isDateInYesterday(self) {
+            return "Tegnap"
+        }
+        // Egy héten belül
+        else if let days = components.day, days < 7 {
+            return "\(days) napja"
+        }
+        // Egy hónapon belül
+        else if let weeks = components.day, weeks < 30 {
+            let weekCount = weeks / 7
+            return "\(weekCount) hete"
+        }
+        // Egy évben belül
+        else if let months = components.month, months < 12 {
+            return "\(months) hónapja"
+        }
+        // Több mint egy éve
+        else if let years = components.year, years > 0 {
+            return "\(years) éve"
+        }
+        
+        return "Régen"
+    }
+}
 struct FeedView2: View {
     @StateObject private var postsViewModel2 = PostsViewModel2()
     @State private var isRefreshing2 = false
     @State private var showSortOptions2 = false
-    @State private var sortOption2: SortOption = .newest
+    @State private var sortOption2: SortOption2 = .newest
     @State private var newPost2: String = ""
     @State private var newComment2: String = ""
     @State private var selectedImage2: UIImage?
@@ -286,7 +328,8 @@ struct FeedView2: View {
     
     @State private var showUserSearch = false
 
-    
+    @State private var showUserMenu = false
+    @State private var selectedUserForMenu: Post2?
     @State private var showPollCreation = false
     @State private var selectedPostForPoll: Post2?
     
@@ -300,8 +343,8 @@ struct FeedView2: View {
         switch sortOption2 {
         case .newest:
             return filtered.sorted { $0.createdAt > $1.createdAt }
-        case .oldest:
-            return filtered.sorted { $0.createdAt < $1.createdAt }
+//        case .oldest:
+//            return filtered.sorted { $0.createdAt < $1.createdAt }
         case .mostLiked:
             return filtered.sorted { $0.likes > $1.likes }
         case .mostCommented:
@@ -327,7 +370,26 @@ struct FeedView2: View {
                     postCreationSection
                     sortOptionsSection
                     postList
-                    
+                    // Módosítsd a FeedView2-ben a popup részét:
+                    if showUserMenu, let post = selectedUserForMenu {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring()) {
+                                    showUserMenu = false
+                                }
+                            }
+                            .overlay(
+                                UserMenuPopup(
+                                    username: post.username,
+                                    userId: post.userId,
+                                    isPresented: $showUserMenu,
+                                    post: post
+                                )
+                                .offset(y: -100)
+                            )
+                            .ignoresSafeArea()
+                    }
                     // 👇 HIDDEN NAVIGATION LINK
                     NavigationLink(
                         destination: Group {
@@ -513,14 +575,19 @@ struct FeedView2: View {
     private var postCreationSection: some View {
         VStack {
             HStack {
-                Image(systemName: "person.crop.circle")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxHeight: 30)
-                    .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
-                    .padding(.horizontal,10)
-                
-                TextField("Írj bejegyzést...", text: $newPost2)
+                VStack{
+                    Image(systemName: "person.crop.circle")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 30)
+                        .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
+                        .padding(.horizontal,10)
+                    
+                    
+                }
+//                TextField("Írj bejegyzést...", text: $newPost2)
+                TextField("Egy menő bejegyzés, \(currentUser2?.username ?? UserDefaults.standard.string(forKey: "username") ?? "Felhasználó")?", text: $newPost2)
+                    .font(.custom("OrelegaOne-Regular", size:16))
                     .padding()
                 
                 Menu {
@@ -528,6 +595,7 @@ struct FeedView2: View {
                         showImagePicker2 = true
                     } label: {
                         Label("Fotó feltöltése", systemImage: "photo")
+                        
                     }
                     
                     Button {
@@ -583,7 +651,7 @@ struct FeedView2: View {
         HStack {
             Menu {
                 Section("Rendezés") {
-                    ForEach(SortOption.allCases, id: \.self) { option in
+                    ForEach(SortOption2.allCases, id: \.self) { option in
                         Button {
                             sortOption2 = option
                         } label: {
@@ -597,6 +665,7 @@ struct FeedView2: View {
                     }
                 }
                 
+                
                 Divider()
                 
             } label: {
@@ -609,13 +678,19 @@ struct FeedView2: View {
                     .padding(.horizontal,5)
             }
             
+            
             if showSearchBar {
                 TextField("Keresés...", text: $searchText2)
+                    .font(.custom("OrelegaOne-Regular", size:16))
                     .padding(8)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(8)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showSearchBar)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 3)
+                    )
             }
             
             Button {
@@ -637,7 +712,9 @@ struct FeedView2: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+        
     }
+    
     
     private var postList: some View {
         ScrollView {
@@ -667,6 +744,11 @@ struct FeedView2: View {
                         },
                         showDetail: {
                             selectedPostForDetail = post2
+                        },
+                        // 👇 ÚJ: User menu callback hozzáadása
+                        showUserMenu: {
+                            selectedUserForMenu = post2
+                            showUserMenu = true
                         }
                     )
                     .padding(.horizontal, 16)
@@ -758,6 +840,317 @@ struct FeedView2: View {
         post2.isShared = true
     }
 }
+struct UserMenuPopup: View {
+    let username: String
+    let userId: Int
+    @Binding var isPresented: Bool
+    let post: Post2
+    
+    @State private var showProfile = false
+    @State private var showMessageSheet = false
+    @State private var messageText = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Fejléc
+            HStack {
+                Image(systemName: "person.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.blue)
+                
+                Text(username)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button(action: {
+                    withAnimation(.spring()) {
+                        isPresented = false
+                    }
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.gray)
+                }
+            }
+            .padding(.bottom, 4)
+            
+            Divider()
+            
+            // Művelet gombok
+            VStack(spacing: 8) {
+                Button(action: {
+                    showProfile = true
+                    isPresented = false
+                }) {
+                    HStack {
+                        Image(systemName: "person.text.rectangle")
+                            .foregroundColor(.blue)
+                        Text("Profil megtekintése")
+                        Spacer()
+                    }
+                    .foregroundColor(.primary)
+                }
+                
+                Button(action: {
+                    showMessageSheet = true
+                    isPresented = false
+                }) {
+                    HStack {
+                        Image(systemName: "message")
+                            .foregroundColor(.green)
+                        Text("Üzenet küldése")
+                        Spacer()
+                    }
+                    .foregroundColor(.primary)
+                }
+                
+                Button(action: {
+                    // Követés funkció itt
+                    print("Követés: \(username)")
+                    isPresented = false
+                }) {
+                    HStack {
+                        Image(systemName: "person.badge.plus")
+                            .foregroundColor(.orange)
+                        Text("Követés")
+                        Spacer()
+                    }
+                    .foregroundColor(.primary)
+                }
+                
+                // Csak a saját posztjainál jelenjen meg
+                if let currentUserId = UserDefaults.standard.object(forKey: "user_id") as? Int,
+                   currentUserId == userId {
+                    Button(action: {
+                        // Saját poszt szerkesztése
+                        print("Poszt szerkesztése")
+                        isPresented = false
+                    }) {
+                        HStack {
+                            Image(systemName: "pencil")
+                                .foregroundColor(.purple)
+                            Text("Poszt szerkesztése")
+                            Spacer()
+                        }
+                        .foregroundColor(.primary)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+        )
+        .frame(width: 280)
+        .padding(.horizontal, 40)
+        
+        // Navigáció a profilhoz
+        .background(
+            NavigationLink(
+                destination: UserProfileView(userId: userId, username: username),
+                isActive: $showProfile,
+                label: { EmptyView() }
+            )
+        )
+        
+        // Üzenet küldés sheet
+        .sheet(isPresented: $showMessageSheet) {
+            MessageComposerView(
+                recipientId: userId,
+                recipientName: username,
+                isPresented: $showMessageSheet
+            )
+        }
+    }
+}
+struct UserProfileView: View {
+    let userId: Int
+    let username: String
+    
+    @State private var userPosts: [Post2] = []
+    @State private var isLoading = true
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Profil fejléc
+                HStack {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.blue)
+                    
+                    VStack(alignment: .leading) {
+                        Text(username)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        Text("Felhasználó")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                
+                // Posztok
+                LazyVStack(spacing: 12) {
+                    ForEach(userPosts) { post in
+                        // Egyszerűsített poszt megjelenítés
+                        VStack(alignment: .leading) {
+                            if let content = post.content {
+                                Text(content)
+                                    .font(.body)
+                                    .padding()
+                            }
+                        }
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+        .navigationTitle("Profil")
+        .onAppear {
+            loadUserPosts()
+        }
+    }
+    
+    private func loadUserPosts() {
+        // Itt implementálhatod a felhasználó posztjainak betöltését
+        isLoading = false // Temporarily set to false
+    }
+}
+// MARK: - Message Composer View
+struct MessageComposerView: View {
+    let recipientId: Int
+    let recipientName: String
+    @Binding var isPresented: Bool
+    @State private var errorMessage: String?
+    
+    @State private var messageText = ""
+    @State private var isSending = false
+    
+    var body: some View {
+            VStack(spacing: 16) {
+                // Címzett info
+                HStack {
+                    Image(systemName: "person.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                    
+                    VStack(alignment: .leading) {
+                        Text("Üzenet küldése")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text(recipientName)
+                            .font(.headline)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                
+                // Üzenet szövege
+                TextEditor(text: $messageText)
+                    .frame(height: 150)
+                    .padding(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
+                    .padding(.horizontal)
+                
+                Spacer()
+                
+                // Küldés gomb
+                Button(action: sendMessage) {
+                    if isSending {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                    } else {
+                        Text("Üzenet küldése")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .disabled(messageText.trimmingCharacters(in: .whitespaces).isEmpty || isSending)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    Group {
+                        if messageText.trimmingCharacters(in: .whitespaces).isEmpty || isSending {
+                            Color.gray
+                        } else {
+                            LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom)
+                        }
+                    }
+                )
+                .foregroundColor(.white)
+                .cornerRadius(10)
+                .padding(.horizontal)
+            }
+            .navigationTitle("Új üzenet")
+            .navigationBarItems(
+                leading: Button("Mégse") {
+                    isPresented = false
+                }
+            )
+        
+    }
+    
+    // Helyettesítsd a sendMessage függvényt ezzel:
+    // Helyettesítsd a sendMessage függvényt ezzel:
+    private func sendMessage() {
+        guard let currentUserId = UserDefaults.standard.object(forKey: "user_id") as? Int else { return }
+        
+        isSending = true
+        errorMessage = nil
+        
+        // Először hozzunk létre egy chat szobát vagy használjunk meglévőt
+        NetworkManager.shared.getOrCreateChatRoom(
+            user1Id: currentUserId,
+            user2Id: recipientId
+        ) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let chatRoom):
+                    // Most küldjük az üzenetet
+                    NetworkManager.shared.sendMessage(
+                        roomId: chatRoom.id,
+                        senderId: currentUserId,
+                        message: messageText
+                    ) { messageResult in
+                        DispatchQueue.main.async {
+                            isSending = false
+                            
+                            switch messageResult {
+                            case .success:
+                                isPresented = false
+                                print("Üzenet sikeresen elküldve")
+                            case .failure(let error):
+                                errorMessage = "Hiba az üzenet küldésekor: \(error.localizedDescription)"
+                                print("Hiba az üzenet küldésekor: \(error)")
+                            }
+                        }
+                    }
+                    
+                case .failure(let error):
+                    isSending = false
+                    errorMessage = "Hiba a chat szoba létrehozásakor: \(error.localizedDescription)"
+                    print("Hiba a chat szoba létrehozásakor: \(error)")
+                }
+            }
+        }
+    }
+}
 
 // MARK: - Segédeszközök
 
@@ -786,7 +1179,7 @@ struct ErrorView2: View {
 
 enum SortOption2: String, CaseIterable {
     case newest = "Legújabb"
-    case oldest = "Legrégebbi"
+//    case oldest = "Legrégebbi"
     case mostLiked = "Legtöbb like"
     case mostCommented = "Legtöbb komment"
 }
@@ -803,29 +1196,38 @@ struct PostView2: View {
     let likePost: () -> Void
     let sharePost: () -> Void
     let showDetail: () -> Void
-    
+    let showUserMenu: () -> Void
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Felhasználó fejléc
             HStack {
-                Image(systemName: "person.circle.fill")
-                    .foregroundColor(.blue)
-                    .font(.title2)
-                HStack() {
-                    Text("• \(post2.username)")
-                        .font(.headline)
-                    Text("•")
-                    Text(post2.createdAt, style: .relative)
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                Spacer()
-            }
+                
+                Button(action: {
+                                    showUserMenu()
+                                }) {
+                                    Image(systemName: "person.crop.circle")
+                                                        .resizable()
+                                                        .scaledToFit()
+                                                        .frame(maxHeight: 30)
+                                                        .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
+                                                        .foregroundStyle(.black)
+                                                    
+                                    HStack {
+                                        Text("• \(post2.username)")
+                                            .font(.custom("OrelegaOne-Regular", size: 20))
+                                            .foregroundStyle(.black)
+                                    }
+                                }
+                                .buttonStyle(PlainButtonStyle()) // Ez eltünteti a gomb stílust
+                                
+                                Spacer()
+                            }
             
             // Tartalom
             if let content = post2.content {
                 Text(content)
-                    .font(.body)
+                    .font(.lexend())
                     .bold()
                     .padding(.vertical, 4)
                     .foregroundStyle(.blue)
@@ -876,7 +1278,7 @@ struct PostView2: View {
                             .symbolEffect(.bounce, value: isLiked)
                         
                         Text("\(post2.likes)")
-                            .font(.caption)
+                            .font(.lexend3())
                             .foregroundColor(.gray)
                     }
                 }
@@ -894,7 +1296,7 @@ struct PostView2: View {
                                 LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
                         
                         Text("\(post2.comments.count)")
-                            .font(.caption)
+                            .font(.lexend3())
                             .foregroundColor(.gray)
                     }
                 }
@@ -914,7 +1316,7 @@ struct PostView2: View {
                                 LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
                         
                         Text("Mentés")
-                            .font(.caption)
+                            .font(.lexend3())
                             .foregroundColor(.gray)
                     }
                 }
@@ -931,7 +1333,7 @@ struct PostView2: View {
                             .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
                         
                         Text("Részletek")
-                            .font(.caption)
+                            .font(.lexend3())
                             .foregroundColor(.gray)
                     }
                 }
@@ -1026,13 +1428,13 @@ struct PostDetailView: View {
                     // Fejléc
                     HStack {
                         Image(systemName: "person.circle.fill")
-                            .foregroundColor(.blue)
+                            .foregroundColor(.yellow)
                             .font(.title2)
                         
                         VStack(alignment: .leading) {
                             Text(post2.username)
                                 .font(.headline)
-                            Text(post2.createdAt, style: .relative)
+                            Text(post2.createdAt.timeAgoDisplay()) // 👈 Itt is
                                 .font(.caption)
                                 .foregroundColor(.gray)
                         }
@@ -1413,7 +1815,7 @@ struct PollView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(poll.question)
-                .font(.headline)
+                .font(.lexend(fontWeight: .regular))
                 .padding(.bottom, 4)
             
             ForEach(poll.options) { option in
@@ -1431,21 +1833,21 @@ struct PollView: View {
             
             HStack {
                 Text("\(poll.totalVotes) szavazat")
-                    .font(.caption)
+                    .font(.custom("Jellee", size: 14))
                     .foregroundColor(.gray)
                 
                 Spacer()
                 
                 if poll.userHasVoted {
                     Text("✓ Szavazat leadva")
-                        .font(.caption)
+                        .font(.custom("Jellee", size:14))
                         .foregroundColor(.green)
                 }
             }
         }
         .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(Color.DesignSystem.fokekszin.opacity(0.1))
+        .cornerRadius(20)
     }
 }
 
@@ -1460,13 +1862,14 @@ struct PollOptionView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(option.text)
-                        .font(.body)
+                        .font(.lexend2(fontWeight: .regular))
                         .foregroundColor(userHasVoted ? .primary : .blue)
                     
                     if userHasVoted {
                         HStack {
                             ProgressView(value: Double(option.percentage), total: 100)
-                                .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                                .tint(userHasVoted && option.userVoted ? Color.green : Color.gray.opacity(0.3)
+                                )
                                 .frame(height: 6)
                             
                             Text("\(option.percentage)%")
@@ -1485,9 +1888,12 @@ struct PollOptionView: View {
             }
             .padding()
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: userHasVoted && option.userVoted ? 25 : 15)
                     .stroke(userHasVoted && option.userVoted ? Color.green : Color.gray.opacity(0.3), lineWidth: 1)
-                    .background(userHasVoted && option.userVoted ? Color.green.opacity(0.1) : Color.clear)
+                    .background(
+                        (userHasVoted && option.userVoted ? Color.green.opacity(0.1) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: userHasVoted && option.userVoted ? 28 : 20))
+                    )
             )
         }
         .disabled(userHasVoted)
@@ -1543,3 +1949,48 @@ struct CommentView2: View {
 #Preview {
     FeedView2()
 }
+
+#Preview("PollView – minta") {
+    // Minta opciók
+    let option1 = PollOption(id: 1, text: "iOS", votesCount: 12, percentage: 60, userVoted: true)
+    let option2 = PollOption(id: 2, text: "Android", votesCount: 6, percentage: 30, userVoted: false)
+    let option3 = PollOption(id: 3, text: "Egyéb", votesCount: 2, percentage: 10, userVoted: false)
+    
+    // Minta poll
+    let samplePoll = Poll(
+        id: 101,
+        question: "Melyik platformot preferálod?",
+        options: [option1, option2, option3],
+        totalVotes: 20,
+        userHasVoted: true, // állítsd false-ra, ha szavazatlan állapotot akarsz látni
+        postId: 999,
+        userId: 1
+    )
+    
+    return VStack(spacing: 20) {
+        PollView(poll: samplePoll) { optionId in
+            print("Szavazat leadva opcióra: \(optionId)")
+            // Itt lehetne frissíteni a poll állapotát a preview-ban is
+        }
+        
+        // Másik állapot: felhasználó még nem szavazott
+        let notVotedOption1 = PollOption(id: 1, text: "SwiftUI", votesCount: 3, percentage: 50, userVoted: false)
+        let notVotedOption2 = PollOption(id: 2, text: "UIKit", votesCount: 3, percentage: 50, userVoted: false)
+        let notVotedPoll = Poll(
+            id: 102,
+            question: "Melyik UI keretrendszert kedveled jobban?",
+            options: [notVotedOption1, notVotedOption2],
+            totalVotes: 6,
+            userHasVoted: false,
+            postId: 1000,
+            userId: 1
+        )
+        
+        PollView(poll: notVotedPoll) { optionId in
+            print("Szavazat leadva opcióra: \(optionId)")
+        }
+    }
+    .padding()
+    .background(Color(.systemGroupedBackground))
+}
+

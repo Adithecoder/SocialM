@@ -85,8 +85,15 @@ struct PostDetailFullView: View {
                         Image(systemName: "chevron.left")
                             .fontWeight(.semibold)
                         Text("Vissza")
+                            .font(.lexend())
                     }
-                    .foregroundColor(.blue)
+                    .foregroundStyle(
+                        .linearGradient(
+                            colors: [.blue, .blue.opacity(0.1)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                 }
             }
             
@@ -107,8 +114,16 @@ struct PostDetailFullView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.title3)
+                        .foregroundStyle(
+                            .linearGradient(
+                                colors: [.blue, .blue.opacity(0.1)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                 }
             }
+            
         }
         .alert("Bejegyzés törlése", isPresented: $showDeleteAlert) {
             Button("Mégse", role: .cancel) {}
@@ -125,13 +140,15 @@ struct PostDetailFullView: View {
     
     private var headerSection: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "person.circle.fill")
-                .font(.system(size: 36))
-                .foregroundColor(.blue)
+            Image(systemName: "person.crop.circle")
+                .resizable()
+                .scaledToFit()
+                .frame(maxHeight: 36)
+                .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(post2.username)
-                    .font(.headline)
+                    .font(.custom("OrelegaOne-Regular", size: 20))
                     .foregroundColor(.primary)
                 
                 Text(formatDate(post2.createdAt))
@@ -147,7 +164,7 @@ struct PostDetailFullView: View {
         VStack(alignment: .leading, spacing: 16) {
             if let content = post2.content, !content.isEmpty {
                 Text(content)
-                    .font(.body)
+                    .font(.lexend())
                     .foregroundColor(.primary)
                     .lineSpacing(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -209,7 +226,7 @@ struct PostDetailFullView: View {
                 ActionButton(
                     icon: isCommented ? "text.bubble.fill" : "text.bubble",
                     label: "Hozzászólás",
-                    color: isCommented ? .blue : .primary
+                    color: isCommented ? .orange : .primary
                 ) {
                     // Komment fókuszálása
                 }
@@ -230,24 +247,25 @@ struct PostDetailFullView: View {
     private var commentsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Hozzászólások")
-                .font(.title3)
+                .font(.custom("Lexend", size: 20))
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)
             
             // New comment input
             HStack {
                 TextField("Szólj hozzá!", text: $newComment)
+                    .font(.custom("OrelegaOne-Regular", size: 20))
                     .padding()
                     .overlay(
                         RoundedRectangle(cornerRadius: 20)
-                            .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 3))
+                            .stroke(LinearGradient(gradient: Gradient(colors: [.blue, .blue.opacity(0.1)]), startPoint: .leading, endPoint: .trailing), lineWidth: 3))
                 
                 Button(action: addComment) {
                     Image(systemName: "paperplane.circle")
                         .resizable()
                         .scaledToFit()
-                        .frame(maxHeight: 30)
-                        .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
+                        .frame(maxHeight: 40)
+                        .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.blue, .blue.opacity(0.1)]), startPoint: .leading, endPoint: .trailing))
                         .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
                         .padding(.horizontal,5)
                 }
@@ -258,14 +276,14 @@ struct PostDetailFullView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 50))
-                        .foregroundColor(.gray.opacity(0.5))
+                        .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.gray, .black.opacity(0.8)]), startPoint: .top, endPoint: .bottom))
                     
                     Text("Még nincsenek hozzászólások")
-                        .font(.headline)
+                        .font(.lexend2())
                         .foregroundColor(.secondary)
                     
-                    Text("Legyél te az első, aki hozzászól!")
-                        .font(.subheadline)
+                    Text("Légy te az első, aki hozzászól!")
+                        .font(.lexend2())
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -310,7 +328,7 @@ struct StatView2: View {
                 .resizable()
                 .scaledToFit()
                 .frame(height: 20)
-                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.blue, .blue.opacity(0.1)]), startPoint: .top, endPoint: .bottom))
             Text("\(count)")
             Text(label)
                 .foregroundColor(.secondary)
@@ -337,7 +355,7 @@ struct ActionButton: View {
                     .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
                     .padding(.horizontal,5)
                 Text(label)
-                    .font(.caption)
+                    .font(.lexend3())
                     .foregroundColor(color) // 👈 Szöveg is kapja a színt
             }
         }
