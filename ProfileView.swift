@@ -44,17 +44,24 @@ struct ProfileView: View {
                 Spacer()
                 
                 Button(action: logout) {
-                    Text("Kijelentkezés")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red)
-                        .cornerRadius(10)
+                    NavigationLink(destination: LogoutView(isLoggedIn: $isLoggedIn)) {
+                        
+                        Text("Kijelentkezés")
+                            .font(.lexend())
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                .linearGradient(
+                                    colors: [.red.opacity(0.8), .red.opacity(0.1)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )                        .cornerRadius(20)
+                    }
+                    .padding()
                 }
-                .padding()
             }
-            .navigationTitle("Profil")
             .onAppear {
                 loadUserData()
             }
@@ -125,14 +132,16 @@ struct ProfileView: View {
             
             VStack(spacing: 8) {
                 Text(user.username)
-                    .font(.title)
+                    .font(.custom("Jellee", size:28))
                     .fontWeight(.bold)
                 
                 if let email = user.email {
                     Text(email)
-                        .font(.subheadline)
+                        .font(.lexend())
                         .foregroundColor(.gray)
                 }
+                
+                
                 
                 if let bio = user.bio, !bio.isEmpty {
                     Text(bio)
@@ -141,35 +150,14 @@ struct ProfileView: View {
                         .padding(.horizontal)
                 }
                 
-                HStack {
-                    VStack {
-                        Text("Regisztrálva")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text(formatDate(user.created_at))
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                    }
-                    
-                    Spacer()
-                    
-                    VStack {
-                        Text("Utolsó bejelentkezés")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text(user.last_login != nil ? formatDate(user.last_login!) : "Még nem")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                    }
-                }
-                .padding(.horizontal)
+
             }
             .padding()
             
             // Statisztikák
             VStack(spacing: 16) {
                 Text("Statisztikák")
-                    .font(.headline)
+                    .font(.custom("Jellee", size:20))
                     .padding(.bottom, 8)
                 
                 HStack {
@@ -184,6 +172,29 @@ struct ProfileView: View {
             .padding()
             .background(Color.gray.opacity(0.1))
             .cornerRadius(12)
+            .padding(.horizontal)
+            
+            Spacer()
+            HStack {
+                VStack {
+                    Text("Regisztrálva")
+                        .font(.custom("Jellee", size:16))
+                        .foregroundColor(.gray)
+                    Text(formatDate(user.created_at))
+                        .font(.lexend3())
+                        .fontWeight(.medium)
+                }
+
+                Spacer()
+                VStack {
+                    Text("Utolsó bejelentkezés")
+                        .font(.custom("Jellee", size:16))
+                        .foregroundColor(.gray)
+                    Text(user.last_login != nil ? formatDate(user.last_login!) : "Még nem")
+                        .font(.lexend3())
+                        .fontWeight(.medium)
+                }
+            }
             .padding(.horizontal)
         }
         .padding()
@@ -327,7 +338,127 @@ struct ProfileView: View {
         UserDefaults.standard.removeObject(forKey: "user_id")
     }
 }
+struct LoginRecord: Codable, Identifiable {
+    let id: Int
+    let login_date: String
+    let device: String?
+    let location: String?
+}
 
+// Popup view a bejelentkezési előzményekhez
+struct LoginHistoryPopup: View {
+    @Binding var isShowing: Bool
+    let loginHistory: [LoginRecord]
+    let isLoading: Bool
+    let user: User
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Fejléc
+            HStack {
+                Text("Bejelentkezési előzmények")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button(action: {
+                    withAnimation {
+                        isShowing = false
+                    }
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.gray)
+                }
+            }
+            .padding()
+            .background(Color(.systemGray6))
+            
+            // Regisztráció és utolsó bejelentkezés információk
+            VStack(spacing: 12) {
+                HStack {
+                    VStack {
+                        Text("Regisztrálva")
+                            .font(.custom("Jellee", size:14))
+                            .foregroundColor(.gray)
+                        Text(formatDisplayDate(user.created_at))
+                            .font(.lexend3())
+                            .fontWeight(.medium)
+                    }
+                    
+                    Spacer()
+                    
+                    VStack {
+                        Text("Utolsó bejelentkezés")
+                            .font(.custom("Jellee", size:14))
+                            .foregroundColor(.gray)
+                        Text(user.last_login != nil ? formatDisplayDate(user.last_login!) : "Még nem")
+                            .font(.lexend3())
+                            .fontWeight(.medium)
+                    }
+                }
+                .padding(.horizontal)
+                
+                Divider()
+            }
+            .padding(.top, 8)
+            
+            if isLoading {
+                ProgressView("Előzmények betöltése...")
+                    .padding()
+            } else if loginHistory.isEmpty {
+                Text("Nincs elérhető bejelentkezési adat")
+                    .foregroundColor(.gray)
+                    .padding()
+            } else {
+                List(loginHistory) { record in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(formatDisplayDate(record.login_date))
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        HStack {
+                            if let device = record.device {
+                                Text(device)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            if let location = record.location {
+                                Text("•")
+                                    .foregroundColor(.secondary)
+                                Text(location)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .listStyle(PlainListStyle())
+            }
+        }
+        .frame(width: 320, height: 450)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(radius: 10)
+    }
+    
+    private func formatDisplayDate(_ dateString: String) -> String {
+        let dateFormatter = ISO8601DateFormatter()
+        guard let date = dateFormatter.date(from: dateString) else {
+            return dateString
+        }
+        
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateStyle = .medium
+        displayFormatter.timeStyle = .short
+        displayFormatter.locale = Locale(identifier: "hu_HU")
+        
+        return displayFormatter.string(from: date)
+    }
+}
 // Segéd struktúrák
 struct ProfilePictureResponse: Codable {
     let message: String
@@ -343,11 +474,11 @@ struct StatView: View {
     var body: some View {
         VStack {
             Text(value)
-                .font(.title2)
+                .font(.lexend())
                 .fontWeight(.bold)
                 .foregroundColor(.blue)
             Text(title)
-                .font(.caption)
+                .font(.lexend3())
                 .foregroundColor(.gray)
         }
     }

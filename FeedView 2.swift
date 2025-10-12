@@ -316,7 +316,7 @@ struct FeedView2: View {
     @State private var postToDelete2: Post2?
     @State private var currentUser2: User?
     @State private var unreadCount = 0
-
+    @State private var selectedUserForProfile: Post2?
     // 👇 MÓDOSÍTOTT: NavigationLink-hez
     @State private var selectedPostForDetail: Post2?
     
@@ -325,7 +325,7 @@ struct FeedView2: View {
     
     @State private var lastRefreshDate = Date()
     @State private var refreshTimer: Timer?
-    
+    @State private var showProfileDetail = false
     @State private var showUserSearch = false
 
     @State private var showUserMenu = false
@@ -380,7 +380,10 @@ struct FeedView2: View {
                                     username: post.username,
                                     userId: post.userId,
                                     isPresented: $showUserMenu,
-                                    post: post
+                                    post: post,
+                                    onProfileView: { // 👈 ÚJ
+                                        showProfileDetailView(for: post) // 👈 Itt hívjuk meg
+                                    }
                                 )
                                 .transition(.scale.combined(with: .opacity))
                                 .animation(.spring(response: 0.1, dampingFraction: 0.8), value: showUserMenu)
@@ -416,6 +419,21 @@ struct FeedView2: View {
                             get: { selectedPostForDetail != nil },
                             set: { if !$0 { selectedPostForDetail = nil } }
                         )
+                    ) {
+                        EmptyView()
+                    }
+                    .hidden()
+                    // ProfileDetailView navigáció
+                    NavigationLink(
+                        destination: Group {
+                            if let userPost = selectedUserForProfile {
+                                ProfileDetailView(
+                                    userId: userPost.userId,
+                                    username: userPost.username
+                                )
+                            }
+                        },
+                        isActive: $showProfileDetail
                     ) {
                         EmptyView()
                     }
@@ -484,6 +502,8 @@ struct FeedView2: View {
                             }
                         }) {
                             Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
+                            
                         }
                     }
                 }
@@ -502,7 +522,10 @@ struct FeedView2: View {
         }
         .navigationViewStyle(.stack)
     }
-
+    private func showProfileDetailView(for post: Post2) {
+        selectedUserForProfile = post
+        showProfileDetail = true
+    }
     // MARK: - Subviews
     // FeedView2.swift - JAVÍTOTT createPoll függvény
 
@@ -513,7 +536,7 @@ struct FeedView2: View {
         
         // Új poszt létrehozása CSAK a szavazással
         let newPost = Post2(
-            content: "📊 Szavazás: \(question)", // Adjunk tartalmat a szavazáshoz
+            content: "📊 Szavazás:", // Adjunk tartalmat a szavazáshoz
             image: nil,
             videoURL: nil,
             userId: userId,
@@ -843,11 +866,11 @@ struct UserMenuPopup: View {
     let userId: Int
     @Binding var isPresented: Bool
     let post: Post2
-    
+    let onProfileView: (() -> Void)? // 👈 ÚJ
     @State private var showProfile = false
     @State private var showMessageSheet = false
     @State private var messageText = ""
-    
+    @State private var selectedUserForProfile: Post2?
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Fejléc rész
@@ -893,12 +916,15 @@ struct UserMenuPopup: View {
             
             // Művelet gombok
             VStack(spacing: 0) {
+                // A UserMenuPopup-ban
+                // A UserMenuPopup-ban
+                // A UserMenuPopup-ban
                 MenuButton(
                     icon: "person.text.rectangle",
                     iconColor: .DesignSystem.fokekszin,
                     title: "Profil megtekintése",
                     action: {
-                        showProfile = true
+                        onProfileView?() // 👈 Itt hívjuk meg
                         isPresented = false
                     }
                 )
@@ -976,6 +1002,7 @@ struct UserMenuPopup: View {
         )
         .frame(width: 320)
     }
+
 }
 
 // Segéd nézet a menü gombokhoz - VILÁGOS változat
@@ -1250,12 +1277,17 @@ struct PostView2: View {
                                     showUserMenu()
                                 }) {
                                     Image(systemName: "person.crop.circle")
-                                                        .resizable()
-                                                        .scaledToFit()
-                                                        .frame(maxHeight: 30)
-                                                        .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
-                                                        .foregroundStyle(.black)
-                                                    
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxHeight: 30)
+                                        .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
+                                        .foregroundStyle(
+                                            .linearGradient(
+                                                colors: [.orange, .blue],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            )
+                                        )
                                     HStack {
                                         Text("• \(post2.username)")
                                             .font(.custom("OrelegaOne-Regular", size: 20))
@@ -1748,24 +1780,62 @@ struct PollCreationView: View {
     
     var body: some View {
         NavigationView {
+            
             Form {
-                Section(header: Text("Szavazás kérdése")) {
+                    // Egyedi balra igazított cím a Mégse alatt
+                    Section {
+                        Text("Új szavazás létrehozása")
+                            .font(.custom("Lexend", size:24))// a saját Lexend fontod
+                            .foregroundColor(.primary)
+                    }
+                    .textCase(nil) // ne legyen Section cím-stílus
+                    .listRowInsets(EdgeInsets(top: -20, leading: 16, bottom: 0, trailing: 16))
+                    .listRowBackground(Color.clear)
+
+                Section(header: Text("Szavazás kérdése")
+                    .font(.lexend())
+                    .foregroundStyle(Color.DesignSystem.fokekszin)
+
+
+                ) {
                     TextField("Add meg a kérdést...", text: $question)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.custom("Jellee", size: 16))
+                        .padding(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(LinearGradient(gradient: Gradient(colors: [.green, .green.opacity(0.1)]), startPoint: .leading, endPoint: .trailing), lineWidth: 3)
+                        )
+                    
                 }
                 
-                Section(header: Text("Választható opciók")) {
+                
+                Section(header: Text("Választható opciók")
+                    .font(.lexend()
+                         )
+                        .foregroundStyle(Color.DesignSystem.fokekszin)
+) {
                     ForEach(0..<options.count, id: \.self) { index in
                         HStack {
                             TextField("Opció \(index + 1)", text: $options[index])
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .font(.custom("Jellee", size: 16))
+                                .padding(10)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(LinearGradient(gradient: Gradient(colors: [.green, .green.opacity(0.1)]), startPoint: .leading, endPoint: .trailing), lineWidth: 3)
+                                )
+
                             
                             if options.count > 2 {
                                 Button(action: {
                                     removeOption(at: index)
                                 }) {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundColor(.red)
+                                    Image(systemName: "minus.circle") // 3 pontos ikon
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxHeight: 30)
+                                        .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.red, .green.opacity(0.1)]), startPoint: .leading, endPoint: .trailing))
+                                        .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
+                                        .padding(.horizontal,5)
                                 }
                             }
                         }
@@ -1773,9 +1843,16 @@ struct PollCreationView: View {
                     
                     Button(action: addOption) {
                         HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundColor(.green)
+                            Image(systemName: "plus.circle") // 3 pontos ikon
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxHeight: 30)
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.DesignSystem.fokekszin, .DesignSystem.fokekszin.opacity(0.1)]), startPoint: .leading, endPoint: .trailing))
+                                .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
+                                .padding(.horizontal,5)
                             Text("Új opció hozzáadása")
+                                .font(.lexend())
+                                .foregroundStyle(Color.DesignSystem.fokekszin)
                         }
                     }
                     .disabled(options.count >= 6)
@@ -1785,22 +1862,55 @@ struct PollCreationView: View {
                     Button("Szavazás létrehozása") {
                         createPoll()
                     }
+                    .font(.custom("Jellee", size:20))
                     .disabled(!isValidPoll)
                     .frame(maxWidth: .infinity)
                     .foregroundColor(.white)
                     .padding()
-                    .background(isValidPoll ? Color.blue : Color.gray)
-                    .cornerRadius(10)
+                    .background(LinearGradient(gradient: Gradient(colors: [.green.opacity(0.9),.green.opacity(0.7), .green.opacity(0.5), .green.opacity(0.3), .green.opacity(0.2)]), startPoint: .leading, endPoint: .trailing))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(LinearGradient(gradient: Gradient(colors: [.green, .green.opacity(0.1)]), startPoint: .leading, endPoint: .trailing), lineWidth: 5)
+                        
+                    )
+                    .cornerRadius(20)
+                    .listRowBackground(Color.clear)
+
                 }
+
+                
             }
-            .navigationTitle("Új szavazás")
+//            .toolbar {
+//                  ToolbarItem(placement: .principal) {
+//                      Text("Új szavazás")
+//                          .font(.lexend())
+//                  }
+//              }
+              .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(
                 leading: Button("Mégse") {
                     isPresented = false
-                },
+                }
+                    .font(.lexend())
+                    .foregroundStyle(
+                        .linearGradient(
+                            colors: [.green, .green.opacity(0.1)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+,
                 trailing: Button("Kész") {
                     createPoll()
                 }
+                    .font(.lexend())
+                    .foregroundStyle(
+                        .linearGradient(
+                            colors: [.green, .green.opacity(0.1)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                 .disabled(!isValidPoll)
             )
             .alert("Hiba", isPresented: $showError) {
@@ -1849,6 +1959,13 @@ struct PollCreationView: View {
         isPresented = false
     }
 }
+struct PollCreationView_Previews: PreviewProvider {
+    @State static var presented = true
+    static var previews: some View {
+        PollCreationView(isPresented: .constant(true)) { _, _ in }
+            .previewDisplayName("PollCreation Preview")
+    }
+}
 
 // MARK: - Poll Display View
 struct PollView: View {
@@ -1858,6 +1975,7 @@ struct PollView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(poll.question)
+                .foregroundStyle(.black)
                 .font(.lexend(fontWeight: .regular))
                 .padding(.bottom, 4)
             

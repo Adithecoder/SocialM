@@ -14,10 +14,10 @@ struct ContentView: View {
                     .tabItem {
                         Label("Mémek", systemImage: "photo")
                     }
-                ProfileView(isLoggedIn: $isLoggedIn) // Átadjuk a bejelentkezési állapotot
-                    .tabItem {
-                        Label("Profil", systemImage: "person")
-                    }
+//                ProfileView(isLoggedIn: $isLoggedIn) // Átadjuk a bejelentkezési állapotot
+//                    .tabItem {
+//                        Label("Profil", systemImage: "person")
+//                    }
                 // További nézetek...
                 
                 
