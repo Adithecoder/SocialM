@@ -319,7 +319,7 @@ struct FeedView2: View {
     @State private var selectedUserForProfile: Post2?
     // 👇 MÓDOSÍTOTT: NavigationLink-hez
     @State private var selectedPostForDetail: Post2?
-    
+    @State private var showMessageSheet = false
     @State private var commentTexts2: [UUID: String] = [:]
     @State private var showSearchBar = false
     
@@ -333,6 +333,10 @@ struct FeedView2: View {
     @State private var showPollCreation = false
     @State private var selectedPostForPoll: Post2?
     
+    private func showUserMenu(for post: Post2) {
+        selectedUserForMenu = post
+        showUserMenu = true
+    }
     var sortedPosts2: [Post2] {
         let filtered = postsViewModel2.posts.filter { post2 in
             searchText2.isEmpty ||
@@ -358,6 +362,7 @@ struct FeedView2: View {
                 VStack {
                     if postsViewModel2.isLoading {
                         ProgressView("Bejegyzések betöltése...")
+                            .font(.lexend2())
                             .padding()
                     }
                     
@@ -370,26 +375,7 @@ struct FeedView2: View {
                     postCreationSection
                     sortOptionsSection
                     postList
-                    // Módosítsd a FeedView2-ben a popup részét:
-                    // User menu popup
-                    // A meglévő .overlay rész cseréje a FeedView2-ben:
-                    .overlay(
-                        Group {
-                            if showUserMenu, let post = selectedUserForMenu {
-                                UserMenuPopup(
-                                    username: post.username,
-                                    userId: post.userId,
-                                    isPresented: $showUserMenu,
-                                    post: post,
-                                    onProfileView: { // 👈 ÚJ
-                                        showProfileDetailView(for: post) // 👈 Itt hívjuk meg
-                                    }
-                                )
-                                .transition(.scale.combined(with: .opacity))
-                                .animation(.spring(response: 0.1, dampingFraction: 0.8), value: showUserMenu)
-                            }
-                        }
-                    )
+
                 
                     // 👇 HIDDEN NAVIGATION LINK
                     NavigationLink(
@@ -493,6 +479,44 @@ struct FeedView2: View {
                 }
                 .sheet(isPresented: $showUserSearch) {
                     UserSearchView()
+                }
+                .sheet(isPresented: $showMessageSheet) {
+                    if let userPost = selectedUserForMenu {
+                        MessageComposerView(
+                            recipientId: userPost.userId,
+                            recipientName: userPost.username,
+                            isPresented: $showMessageSheet
+                        )
+                    }
+                }
+                .confirmationDialog("Műveletek", isPresented: $showUserMenu) {
+                    if let user = selectedUserForMenu {
+                        Button("Profil megtekintése") {
+                            showProfileDetailView(for: user)
+                        }
+                        
+                        Button("Üzenet küldése") {
+                            showMessageSheet = true
+                        }
+                        
+                        Button("Követés", role: .none) {
+                            followUser()
+                        }
+                        
+                        // Csak más felhasználóknál jelenjen meg a jelentés
+                        if let currentUserId = UserDefaults.standard.object(forKey: "user_id") as? Int,
+                           currentUserId != user.userId {
+                            Button("Jelentés", role: .destructive) {
+                                reportUser()
+                            }
+                        }
+                        
+                        Button("Mégse", role: .cancel) {}
+                    }
+                } message: {
+                    if let user = selectedUserForMenu {
+                        Text("\(user.username) felhasználó műveletei")
+                    }
                 }
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -766,10 +790,9 @@ struct FeedView2: View {
                         showDetail: {
                             selectedPostForDetail = post2
                         },
-                        // 👇 ÚJ: User menu callback hozzáadása
+                        // 👇 MÓDOSÍTOTT: User menu callback hozzáadása
                         showUserMenu: {
-                            selectedUserForMenu = post2
-                            showUserMenu = true
+                            showUserMenu(for: post2) // 👈 Itt hívjuk meg az új függvényt
                         }
                     )
                     .padding(.horizontal, 16)
@@ -860,20 +883,40 @@ struct FeedView2: View {
     private func sharePost(_ post2: Post2) {
         post2.isShared = true
     }
+    
+    private func followUser() {
+        guard let currentUserId = UserDefaults.standard.object(forKey: "user_id") as? Int,
+              let userToFollow = selectedUserForMenu else { return }
+        
+        NetworkManager.shared.followUser(followerId: currentUserId, followingId: userToFollow.userId) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("Sikeres követés: \(userToFollow.username)")
+                case .failure(let error):
+                    print("Hiba a követésnél: \(error)")
+                }
+            }
+        }
+    }
+
+    private func reportUser() {
+        guard let userToReport = selectedUserForMenu else { return }
+        print("Felhasználó jelentése: \(userToReport.username)")
+    }
+    
 }
 struct UserMenuPopup: View {
     let username: String
     let userId: Int
     @Binding var isPresented: Bool
     let post: Post2
-    let onProfileView: (() -> Void)? // 👈 ÚJ
-    @State private var showProfile = false
+    let onProfileView: (() -> Void)?
     @State private var showMessageSheet = false
-    @State private var messageText = ""
-    @State private var selectedUserForProfile: Post2?
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Fejléc rész
+            // Fejléc rész - liquid glass stílusban
             HStack(spacing: 12) {
                 Image(systemName: "person.circle.fill")
                     .font(.system(size: 40))
@@ -889,8 +932,11 @@ struct UserMenuPopup: View {
                     Text(username)
                         .font(.lexend())
                         .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                     
+                    Text("Felhasználó")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
                 
                 Spacer()
@@ -902,7 +948,7 @@ struct UserMenuPopup: View {
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title2)
-                        .foregroundColor(.black.opacity(0.5))
+                        .foregroundColor(.secondary)
                 }
             }
             .padding(.horizontal, 20)
@@ -910,21 +956,18 @@ struct UserMenuPopup: View {
             
             // Vékony elválasztó vonal
             Rectangle()
-                .fill(Color.DesignSystem.szurke)
+                .fill(Color.primary.opacity(0.1))
                 .frame(height: 1)
                 .padding(.horizontal, 8)
             
-            // Művelet gombok
+            // Művelet gombok - liquid glass stílusban
             VStack(spacing: 0) {
-                // A UserMenuPopup-ban
-                // A UserMenuPopup-ban
-                // A UserMenuPopup-ban
                 MenuButton(
                     icon: "person.text.rectangle",
                     iconColor: .DesignSystem.fokekszin,
                     title: "Profil megtekintése",
                     action: {
-                        onProfileView?() // 👈 Itt hívjuk meg
+                        onProfileView?()
                         isPresented = false
                     }
                 )
@@ -977,34 +1020,30 @@ struct UserMenuPopup: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(LinearGradient(
-                    gradient: Gradient(colors: [.blue, .orange]),
-                    startPoint: .bottomLeading,
-                    endPoint: .topLeading
-                ))
-                .shadow(
-                    color: .black.opacity(0.1),
-                    radius: 10,
-                    x: 0,
-                    y: 5
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.1)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
                 )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(
-                    LinearGradient(
-                        gradient: Gradient(colors: [.DesignSystem.barack.opacity(0.9), .DesignSystem.fokekszin.opacity(0.3)]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2
-                )
+                .shadow(color: .black.opacity(0.2), radius: 15, x: 0, y: 10)
         )
         .frame(width: 320)
+        .sheet(isPresented: $showMessageSheet) {
+            MessageComposerView(
+                recipientId: userId,
+                recipientName: username,
+                isPresented: $showMessageSheet
+            )
+        }
     }
-
 }
-
 // Segéd nézet a menü gombokhoz - VILÁGOS változat
 struct MenuButton: View {
     let icon: String
@@ -1795,19 +1834,31 @@ struct PollCreationView: View {
                 Section(header: Text("Szavazás kérdése")
                     .font(.lexend())
                     .foregroundStyle(Color.DesignSystem.fokekszin)
-
-
                 ) {
-                    TextField("Add meg a kérdést...", text: $question)
-                        .font(.custom("Jellee", size: 16))
-                        .padding(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(LinearGradient(gradient: Gradient(colors: [.green, .green.opacity(0.1)]), startPoint: .leading, endPoint: .trailing), lineWidth: 3)
-                        )
-                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Add meg a kérdést...", text: $question)
+                            .font(.custom("Jellee", size: 16))
+                            .padding(8)
+                    }
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.white)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(LinearGradient(
+                                gradient: Gradient(colors: [.green, .green.opacity(0.1)]),
+                                startPoint: .leading, endPoint: .trailing),
+                                lineWidth: 3
+                            )
+                    )
+
                 }
                 
+                
+                .listRowBackground(Color.clear)
+
                 
                 Section(header: Text("Választható opciók")
                     .font(.lexend()
