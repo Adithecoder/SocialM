@@ -1266,4 +1266,3 @@ struct SearchedUser: Codable, Identifiable {
         }
     }
 }
-

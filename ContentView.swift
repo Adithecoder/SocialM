@@ -10,9 +10,9 @@ struct ContentView: View {
                     .tabItem {
                         Label("Hírcsatorna", systemImage: "house")
                     }
-                MemeView()
+                QuizGameView()
                     .tabItem {
-                        Label("Mémek", systemImage: "photo")
+                        Label("Kvízek", systemImage: "photo")
                     }
 //                ProfileView(isLoggedIn: $isLoggedIn) // Átadjuk a bejelentkezési állapotot
 //                    .tabItem {

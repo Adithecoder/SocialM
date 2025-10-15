@@ -1832,6 +1832,339 @@ app.get("/", async (req, res) => {
   }
 });
 
+
+
+
+
+
+// ✅ KVIZ VÉGPONTOK
+
+// ✅ KVIZEK LEKÉRÉSE
+app.get("/quizzes", async (req, res) => {
+  try {
+    const { category, difficulty, search } = req.query;
+    
+    let sql = `
+      SELECT q.*, u.username as creator_username,
+             (SELECT COUNT(*) FROM quiz_plays WHERE quiz_id = q.id) as plays_count,
+             (SELECT AVG(score) FROM quiz_plays WHERE quiz_id = q.id) as average_score
+      FROM quizzes q
+      LEFT JOIN users u ON q.created_by = u.id
+      WHERE q.is_public = 1
+    `;
+    let params = [];
+    
+    if (category && category !== 'Összes') {
+      sql += ' AND q.category = ?';
+      params.push(category);
+    }
+    
+    if (difficulty) {
+      sql += ' AND q.difficulty = ?';
+      params.push(difficulty);
+    }
+    
+    if (search) {
+      sql += ' AND (q.title LIKE ? OR q.description LIKE ?)';
+      const searchParam = `%${search}%`;
+      params.push(searchParam, searchParam);
+    }
+    
+    sql += ' ORDER BY q.created_at DESC';
+    
+    const quizzes = await dbAll(sql, params);
+    
+    // Kérdések lekérése minden kvízhez
+    for (let quiz of quizzes) {
+      const questions = await dbAll(`
+        SELECT * FROM quiz_questions 
+        WHERE quiz_id = ? 
+        ORDER BY question_order ASC
+      `, [quiz.id]);
+      
+      quiz.questions = questions;
+      
+      // Opciók lekérése minden kérdéshez
+      for (let question of quiz.questions) {
+        const options = await dbAll(`
+          SELECT * FROM quiz_options 
+          WHERE question_id = ? 
+          ORDER BY option_order ASC
+        `, [question.id]);
+        question.options = options.map(opt => opt.option_text);
+      }
+    }
+    
+    res.json(quizzes);
+  } catch (err) {
+    console.error('Hiba a kvízek lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ ÚJ KVIZ LÉTREHOZÁSA
+app.post("/quizzes", async (req, res) => {
+  const { title, description, category, difficulty, time_limit, max_players, is_public, questions, created_by } = req.body;
+
+  if (!title || !questions || !created_by) {
+    return res.status(400).json({ message: "Hiányzó adatok" });
+  }
+
+  try {
+    // Kvíz létrehozása
+    const quizResult = await dbRun(
+      `INSERT INTO quizzes (title, description, category, difficulty, time_limit, max_players, is_public, created_by) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, description, category, difficulty, time_limit, max_players, is_public ? 1 : 0, created_by]
+    );
+
+    const quizId = quizResult.id;
+
+    // Kérdések hozzáadása
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
+      const questionResult = await dbRun(
+        `INSERT INTO quiz_questions (quiz_id, question_text, explanation, question_order, correct_answer) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [quizId, question.question, question.explanation || '', i, question.correctAnswer]
+      );
+
+      const questionId = questionResult.id;
+
+      // Opciók hozzáadása
+      for (let j = 0; j < question.options.length; j++) {
+        await dbRun(
+          `INSERT INTO quiz_options (question_id, option_text, option_order) 
+           VALUES (?, ?, ?)`,
+          [questionId, question.options[j], j]
+        );
+      }
+    }
+
+    res.json({
+      message: "Kvíz létrehozva",
+      quiz_id: quizId
+    });
+  } catch (err) {
+    console.error('Hiba a kvíz létrehozásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ KVIZ SESSION LÉTREHOZÁSA
+app.post("/quiz-sessions", async (req, res) => {
+  const { quiz_id, creator_id, invited_users = [] } = req.body;
+
+  if (!quiz_id || !creator_id) {
+    return res.status(400).json({ message: "Hiányzó adatok" });
+  }
+
+  try {
+    // Session kód generálása
+    const sessionCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    const sessionResult = await dbRun(
+      `INSERT INTO quiz_sessions (quiz_id, creator_id, session_code, status) 
+       VALUES (?, ?, ?, 'waiting')`,
+      [quiz_id, creator_id, sessionCode]
+    );
+
+    const sessionId = sessionResult.id;
+
+    // Creator hozzáadása játékosként
+    await dbRun(
+      `INSERT INTO quiz_players (session_id, user_id, is_ready) 
+       VALUES (?, ?, 1)`,
+      [sessionId, creator_id]
+    );
+
+    // Meghívott felhasználók hozzáadása
+    for (let userId of invited_users) {
+      await dbRun(
+        `INSERT INTO quiz_players (session_id, user_id) 
+         VALUES (?, ?)`,
+        [sessionId, userId]
+      );
+    }
+
+    const session = await dbGet(`
+      SELECT qs.*, q.title as quiz_title, u.username as creator_username
+      FROM quiz_sessions qs
+      LEFT JOIN quizzes q ON qs.quiz_id = q.id
+      LEFT JOIN users u ON qs.creator_id = u.id
+      WHERE qs.id = ?
+    `, [sessionId]);
+
+    res.json({
+      ...session,
+      session_code: sessionCode
+    });
+  } catch (err) {
+    console.error('Hiba a session létrehozásakor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ CSATLAKOZÁS SESSION-HEZ
+app.post("/quiz-sessions/:sessionId/join", async (req, res) => {
+  const sessionId = req.params.sessionId;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ message: "Hiányzó user_id" });
+  }
+
+  try {
+    // Ellenőrizzük, hogy létezik-e a session
+    const session = await dbGet('SELECT * FROM quiz_sessions WHERE id = ?', [sessionId]);
+    if (!session) {
+      return res.status(404).json({ message: "Session nem található" });
+    }
+
+    // Ellenőrizzük, hogy már csatlakozott-e
+    const existingPlayer = await dbGet(
+      'SELECT id FROM quiz_players WHERE session_id = ? AND user_id = ?',
+      [sessionId, user_id]
+    );
+
+    if (existingPlayer) {
+      return res.status(400).json({ message: "Már csatlakoztál ehhez a session-hez" });
+    }
+
+    // Játékos hozzáadása
+    await dbRun(
+      'INSERT INTO quiz_players (session_id, user_id) VALUES (?, ?)',
+      [sessionId, user_id]
+    );
+
+    res.json({ message: "Sikeresen csatlakoztál a session-hez" });
+  } catch (err) {
+    console.error('Hiba a csatlakozáskor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ SESSION ADATAI
+app.get("/quiz-sessions/:sessionId", async (req, res) => {
+  const sessionId = req.params.sessionId;
+
+  try {
+    const session = await dbGet(`
+      SELECT qs.*, q.title as quiz_title, q.description as quiz_description,
+             u.username as creator_username
+      FROM quiz_sessions qs
+      LEFT JOIN quizzes q ON qs.quiz_id = q.id
+      LEFT JOIN users u ON qs.creator_id = u.id
+      WHERE qs.id = ?
+    `, [sessionId]);
+
+    if (!session) {
+      return res.status(404).json({ message: "Session nem található" });
+    }
+
+    // Játékosok lekérése
+    const players = await dbAll(`
+      SELECT qp.*, u.username 
+      FROM quiz_players qp
+      LEFT JOIN users u ON qp.user_id = u.id
+      WHERE qp.session_id = ?
+    `, [sessionId]);
+
+    session.players = players;
+
+    res.json(session);
+  } catch (err) {
+    console.error('Hiba a session lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ VÁLASZ BEKÜLDÉSE
+app.post("/quiz-sessions/:sessionId/answer", async (req, res) => {
+  const sessionId = req.params.sessionId;
+  const { user_id, question_id, selected_answer, answer_time } = req.body;
+
+  if (!user_id || !question_id || selected_answer === undefined) {
+    return res.status(400).json({ message: "Hiányzó adatok" });
+  }
+
+  try {
+    await dbRun(
+      `INSERT INTO quiz_answers (session_id, user_id, question_id, selected_answer, answer_time) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [sessionId, user_id, question_id, selected_answer, answer_time || Date.now()]
+    );
+
+    res.json({ message: "Válasz sikeresen beküldve" });
+  } catch (err) {
+    console.error('Hiba a válasz beküldésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ EREDMÉNYEK LEKÉRÉSE
+app.get("/quiz-sessions/:sessionId/results", async (req, res) => {
+  const sessionId = req.params.sessionId;
+
+  try {
+    const results = await dbAll(`
+      SELECT u.username, 
+             COUNT(CASE WHEN qo.option_order = qq.correct_answer THEN 1 END) as correct_answers,
+             COUNT(*) as total_questions,
+             SUM(qa.answer_time) as total_time
+      FROM quiz_answers qa
+      LEFT JOIN quiz_questions qq ON qa.question_id = qq.id
+      LEFT JOIN quiz_options qo ON qa.question_id = qo.question_id AND qa.selected_answer = qo.option_order
+      LEFT JOIN users u ON qa.user_id = u.id
+      WHERE qa.session_id = ?
+      GROUP BY qa.user_id
+      ORDER BY correct_answers DESC, total_time ASC
+    `, [sessionId]);
+
+    res.json(results);
+  } catch (err) {
+    console.error('Hiba az eredmények lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+// ✅ FELHASZNÁLÓ KVIZ EREDMÉNYEI
+app.get("/users/:userId/quiz-stats", async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const stats = await dbGet(`
+      SELECT 
+        COUNT(DISTINCT qp.session_id) as games_played,
+        AVG(qp.score) as average_score,
+        MAX(qp.score) as best_score,
+        COUNT(CASE WHEN qp.position = 1 THEN 1 END) as wins
+      FROM quiz_plays qp
+      WHERE qp.user_id = ?
+    `, [userId]);
+
+    const recentGames = await dbAll(`
+      SELECT q.title, qp.score, qp.position, qp.played_at
+      FROM quiz_plays qp
+      LEFT JOIN quiz_sessions qs ON qp.session_id = qs.id
+      LEFT JOIN quizzes q ON qs.quiz_id = q.id
+      WHERE qp.user_id = ?
+      ORDER BY qp.played_at DESC
+      LIMIT 10
+    `, [userId]);
+
+    res.json({
+      ...stats,
+      recent_games: recentGames
+    });
+  } catch (err) {
+    console.error('Hiba a statisztikák lekérésekor:', err);
+    res.status(500).json({ message: "Szerver hiba", error: err.message });
+  }
+});
+
+
+
 // Szerver indítás
 initializeDatabase().then(() => {
   app.listen(PORT, '0.0.0.0', () => {

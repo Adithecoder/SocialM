@@ -21,7 +21,7 @@ struct LoginView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Text("Bejelentkezés")
+                Text(NSLocalizedString("login", comment: ""))
                     .font(.custom("gunplay", size: 40))
                     .foregroundStyle(
                             .linearGradient(
@@ -32,7 +32,7 @@ struct LoginView: View {
                     .padding(.top, 40)
 
                 VStack(spacing: 16) {
-                    TextField("Felhasználónév", text: $username)
+                    TextField(NSLocalizedString("username", comment: "Password field placeholder"), text: $username)
                         .font(.custom("OrelegaOne-Regular", size: 18))
                         .padding()
                         .overlay(
@@ -46,8 +46,7 @@ struct LoginView: View {
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
 
-                    SecureField("Jelszó", text: $password)
-                        .font(.custom("OrelegaOne-Regular", size: 18))
+                    SecureField(NSLocalizedString("password", comment: "Password field placeholder"), text: $password)                        .font(.custom("OrelegaOne-Regular", size: 18))
                         .padding()
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
@@ -68,7 +67,7 @@ struct LoginView: View {
                         .padding()
                 } else {
                     Button(action: login) {
-                        Text("Bejelentkezés")
+                        Text(NSLocalizedString("login", comment: ""))
                             .padding()
                             .padding(.horizontal,70)
                             .font(.custom("Jellee", size: 18))
@@ -95,8 +94,7 @@ struct LoginView: View {
                     .padding(.horizontal)
                 }
                 NavigationLink(destination: RegisterView(isLoggedIn: $isLoggedIn)) {
-                    Text("Még nincs fiókod? Regisztrálj itt")
-                        .font(.custom("OrelegaOne-Regular", size: 18))
+                    Text(NSLocalizedString("auth.no_account_register", comment: "No account prompt with registration link"))                        .font(.custom("OrelegaOne-Regular", size: 18))
                         .padding()
                         .foregroundStyle(Color.DesignSystem.szurke)
                         .font(.subheadline)

@@ -227,6 +227,263 @@ function initializeDatabase() {
       if (err) reject(err);
     });
 
+      
+      
+      // database.js - QUIZ TÁBLÁK HOZZÁADÁSA
+      function initializeDatabase() {
+        return new Promise((resolve, reject) => {
+          console.log('🔄 Adatbázis inicializálása...');
+          
+          // Meglévő táblák...
+          
+          // Quiz táblák
+          db.run(`
+            CREATE TABLE IF NOT EXISTS quizzes (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              description TEXT,
+              category TEXT NOT NULL,
+              difficulty TEXT NOT NULL,
+              time_limit INTEGER DEFAULT 30,
+              max_players INTEGER DEFAULT 4,
+              is_public BOOLEAN DEFAULT 1,
+              created_by INTEGER NOT NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+          `, (err) => {
+            if (err) console.error('❌ Hiba a quizzes tábla létrehozásakor:', err);
+            else console.log('✅ Quizzes tábla létrehozva/ellenőrizve');
+          });
+
+          db.run(`
+            CREATE TABLE IF NOT EXISTS quiz_questions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              quiz_id INTEGER NOT NULL,
+              question_text TEXT NOT NULL,
+              explanation TEXT,
+              question_order INTEGER DEFAULT 0,
+              correct_answer INTEGER DEFAULT 0,
+              FOREIGN KEY (quiz_id) REFERENCES quizzes (id)
+            )
+          `, (err) => {
+            if (err) console.error('❌ Hiba a quiz_questions tábla létrehozásakor:', err);
+            else console.log('✅ Quiz questions tábla létrehozva/ellenőrizve');
+          });
+
+          db.run(`
+            CREATE TABLE IF NOT EXISTS quiz_options (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              question_id INTEGER NOT NULL,
+              option_text TEXT NOT NULL,
+              option_order INTEGER DEFAULT 0,
+              FOREIGN KEY (question_id) REFERENCES quiz_questions (id)
+            )
+          `, (err) => {
+            if (err) console.error('❌ Hiba a quiz_options tábla létrehozásakor:', err);
+            else console.log('✅ Quiz options tábla létrehozva/ellenőrizve');
+          });
+
+          db.run(`
+            CREATE TABLE IF NOT EXISTS quiz_sessions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              quiz_id INTEGER NOT NULL,
+              creator_id INTEGER NOT NULL,
+              session_code TEXT UNIQUE NOT NULL,
+              status TEXT DEFAULT 'waiting',
+              current_question INTEGER DEFAULT 0,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              started_at DATETIME,
+              ended_at DATETIME,
+              FOREIGN KEY (quiz_id) REFERENCES quizzes (id),
+              FOREIGN KEY (creator_id) REFERENCES users (id)
+            )
+          `, (err) => {
+            if (err) console.error('❌ Hiba a quiz_sessions tábla létrehozásakor:', err);
+            else console.log('✅ Quiz sessions tábla létrehozva/ellenőrizve');
+          });
+
+          db.run(`
+            CREATE TABLE IF NOT EXISTS quiz_players (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id INTEGER NOT NULL,
+              user_id INTEGER NOT NULL,
+              score INTEGER DEFAULT 0,
+              is_ready BOOLEAN DEFAULT 0,
+              joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (session_id) REFERENCES quiz_sessions (id),
+              FOREIGN KEY (user_id) REFERENCES users (id),
+              UNIQUE(session_id, user_id)
+            )
+          `, (err) => {
+            if (err) console.error('❌ Hiba a quiz_players tábla létrehozásakor:', err);
+            else console.log('✅ Quiz players tábla létrehozva/ellenőrizve');
+          });
+
+          db.run(`
+            CREATE TABLE IF NOT EXISTS quiz_answers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id INTEGER NOT NULL,
+              user_id INTEGER NOT NULL,
+              question_id INTEGER NOT NULL,
+              selected_answer INTEGER NOT NULL,
+              answer_time BIGINT DEFAULT 0,
+              is_correct BOOLEAN DEFAULT 0,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (session_id) REFERENCES quiz_sessions (id),
+              FOREIGN KEY (user_id) REFERENCES users (id),
+              FOREIGN KEY (question_id) REFERENCES quiz_questions (id),
+              UNIQUE(session_id, user_id, question_id)
+            )
+          `, (err) => {
+            if (err) console.error('❌ Hiba a quiz_answers tábla létrehozásakor:', err);
+            else console.log('✅ Quiz answers tábla létrehozva/ellenőrizve');
+          });
+
+          db.run(`
+            CREATE TABLE IF NOT EXISTS quiz_plays (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id INTEGER NOT NULL,
+              user_id INTEGER NOT NULL,
+              score INTEGER DEFAULT 0,
+              position INTEGER DEFAULT 0,
+              played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (session_id) REFERENCES quiz_sessions (id),
+              FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+          `, (err) => {
+            if (err) console.error('❌ Hiba a quiz_plays tábla létrehozásakor:', err);
+            else console.log('✅ Quiz plays tábla létrehozva/ellenőrizve');
+            resolve();
+          });
+        });
+      }
+      
+      
+      
+      
+      // Quiz táblák
+        db.run(`
+          CREATE TABLE IF NOT EXISTS quizzes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            difficulty TEXT NOT NULL,
+            time_limit INTEGER DEFAULT 30,
+            max_players INTEGER DEFAULT 4,
+            is_public BOOLEAN DEFAULT 1,
+            created_by INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users (id)
+          )
+        `, (err) => {
+          if (err) console.error('❌ Hiba a quizzes tábla létrehozásakor:', err);
+          else console.log('✅ Quizzes tábla létrehozva/ellenőrizve');
+        });
+
+        db.run(`
+          CREATE TABLE IF NOT EXISTS quiz_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            quiz_id INTEGER NOT NULL,
+            question_text TEXT NOT NULL,
+            explanation TEXT,
+            question_order INTEGER DEFAULT 0,
+            correct_answer INTEGER DEFAULT 0,
+            FOREIGN KEY (quiz_id) REFERENCES quizzes (id)
+          )
+        `, (err) => {
+          if (err) console.error('❌ Hiba a quiz_questions tábla létrehozásakor:', err);
+          else console.log('✅ Quiz questions tábla létrehozva/ellenőrizve');
+        });
+
+        db.run(`
+          CREATE TABLE IF NOT EXISTS quiz_options (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question_id INTEGER NOT NULL,
+            option_text TEXT NOT NULL,
+            option_order INTEGER DEFAULT 0,
+            FOREIGN KEY (question_id) REFERENCES quiz_questions (id)
+          )
+        `, (err) => {
+          if (err) console.error('❌ Hiba a quiz_options tábla létrehozásakor:', err);
+          else console.log('✅ Quiz options tábla létrehozva/ellenőrizve');
+        });
+
+        db.run(`
+          CREATE TABLE IF NOT EXISTS quiz_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            quiz_id INTEGER NOT NULL,
+            creator_id INTEGER NOT NULL,
+            session_code TEXT UNIQUE NOT NULL,
+            status TEXT DEFAULT 'waiting',
+            current_question INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            started_at DATETIME,
+            ended_at DATETIME,
+            FOREIGN KEY (quiz_id) REFERENCES quizzes (id),
+            FOREIGN KEY (creator_id) REFERENCES users (id)
+          )
+        `, (err) => {
+          if (err) console.error('❌ Hiba a quiz_sessions tábla létrehozásakor:', err);
+          else console.log('✅ Quiz sessions tábla létrehozva/ellenőrizve');
+        });
+
+        db.run(`
+          CREATE TABLE IF NOT EXISTS quiz_players (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            score INTEGER DEFAULT 0,
+            is_ready BOOLEAN DEFAULT 0,
+            joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES quiz_sessions (id),
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(session_id, user_id)
+          )
+        `, (err) => {
+          if (err) console.error('❌ Hiba a quiz_players tábla létrehozásakor:', err);
+          else console.log('✅ Quiz players tábla létrehozva/ellenőrizve');
+        });
+
+        db.run(`
+          CREATE TABLE IF NOT EXISTS quiz_answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            question_id INTEGER NOT NULL,
+            selected_answer INTEGER NOT NULL,
+            answer_time BIGINT DEFAULT 0,
+            is_correct BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES quiz_sessions (id),
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (question_id) REFERENCES quiz_questions (id),
+            UNIQUE(session_id, user_id, question_id)
+          )
+        `, (err) => {
+          if (err) console.error('❌ Hiba a quiz_answers tábla létrehozásakor:', err);
+          else console.log('✅ Quiz answers tábla létrehozva/ellenőrizve');
+        });
+
+        db.run(`
+          CREATE TABLE IF NOT EXISTS quiz_plays (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            score INTEGER DEFAULT 0,
+            position INTEGER DEFAULT 0,
+            played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES quiz_sessions (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
+          )
+        `, (err) => {
+          if (err) console.error('❌ Hiba a quiz_plays tábla létrehozásakor:', err);
+          else console.log('✅ Quiz plays tábla létrehozva/ellenőrizve');
+          resolve();
+            
+            
+            
     // Indexek
     db.run(`CREATE INDEX IF NOT EXISTS idx_room_id ON messages(room_id)`, (err) => {
       if (err) reject(err);
@@ -243,6 +500,8 @@ function initializeDatabase() {
     });
   });
 }
+
+
 
 module.exports = {
     db,
