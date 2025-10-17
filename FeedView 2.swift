@@ -138,7 +138,7 @@ class PostsViewModel2: ObservableObject {
                     self.posts = serverPosts.map { Post2(from: $0) }
                     print("✅ Bejegyzések betöltve: \(self.posts.count)")
                 case .failure(let error):
-                    self.errorMessage = "Hiba a bejegyzések betöltésekor: \(error.localizedDescription)"
+                    self.errorMessage = "Error during loading posts: \(error.localizedDescription)"
                     print("❌ Hiba a bejegyzések betöltésekor: \(error)")
                 }
             }
@@ -322,11 +322,13 @@ struct FeedView2: View {
     @State private var showMessageSheet = false
     @State private var commentTexts2: [UUID: String] = [:]
     @State private var showSearchBar = false
-    
+    @State private var showPostcreate = false
+
     @State private var lastRefreshDate = Date()
     @State private var refreshTimer: Timer?
     @State private var showProfileDetail = false
     @State private var showUserSearch = false
+    @State private var showTextField = false
 
     @State private var showUserMenu = false
     @State private var selectedUserForMenu: Post2?
@@ -425,7 +427,7 @@ struct FeedView2: View {
                     }
                     .hidden()
                 }
-                .navigationTitle("Közösségi Média")
+//                .navigationTitle("Közösségi Média")
                 
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -619,79 +621,144 @@ struct FeedView2: View {
     
     private var postCreationSection: some View {
         VStack {
-            HStack {
-                VStack{
+            // PLUSZ GOMB - mindig látható
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showPostcreate.toggle()
+                    if !showPostcreate {
+                        searchText2 = ""
+                        showTextField = false
+                    }
+                }
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 60)
+                    .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
+                    .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
+                    .padding(.horizontal, 5)
+            }
+            .background( showPostcreate ? Color.clear: Color.white)
+            
+            // GRIDVIEW - csak akkor jelenik meg, ha aktív
+            if showPostcreate {
+                GridView(onItemSelected: handleGridItemSelection) // 👈 ITT ADOD ÁT A FUNKCIÓT
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showPostcreate)
+            }
+            
+            // 👇 TEXTFIELD - csak akkor jelenik meg, ha a Szöveges gombra kattintottunk
+            if showTextField {
+                HStack {
                     Image(systemName: "person.crop.circle")
                         .resizable()
                         .scaledToFit()
                         .frame(maxHeight: 30)
                         .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
-                        .padding(.horizontal,10)
+                        .padding(.horizontal, 10)
                     
+                    TextField("Egy menő bejegyzés, \(currentUser2?.username ?? UserDefaults.standard.string(forKey: "username") ?? "Felhasználó")?", text: $newPost2)
+                        .font(.custom("Lexend", size:14))
+                        .padding()
                     
-                }
-//                TextField("Írj bejegyzést...", text: $newPost2)
-                TextField("Egy menő bejegyzés, \(currentUser2?.username ?? UserDefaults.standard.string(forKey: "username") ?? "Felhasználó")?", text: $newPost2)
-                    .font(.custom("OrelegaOne-Regular", size:16))
-                    .padding()
-                
-                Menu {
-                    Button {
-                        showImagePicker2 = true
-                    } label: {
-                        Label("Fotó feltöltése", systemImage: "photo")
+                    Menu {
+                        Button {
+                            showImagePicker2 = true
+                        } label: {
+                            Label("Fotó feltöltése", systemImage: "photo")
+                        }
                         
-                    }
-                    
-                    Button {
-                        showVideoPicker2 = true
+                        Button {
+                            showVideoPicker2 = true
+                        } label: {
+                            Label("Videó feltöltése", systemImage: "video")
+                        }
+                        
+                        Button {
+                            selectedPostForPoll = nil
+                            showPollCreation = true
+                        } label: {
+                            Label("Szavazás létrehozása", systemImage: "chart.bar")
+                        }
                     } label: {
-                        Label("Videó feltöltése", systemImage: "video")
-                    }
-                    
-                    Button {
-                        // Új: Szavazás létrehozása
-                        selectedPostForPoll = nil // Új poszthoz
-                        showPollCreation = true
-                    } label: {
-                        Label("Szavazás létrehozása", systemImage: "chart.bar")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle") // 3 pontos ikon
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 30)
-                        .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
-                        .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
-                        .padding(.horizontal,5)
-                }
-                
-                
-                
-                if !newPost2.isEmpty || selectedImage2 != nil || selectedVideoURL2 != nil {
-                    Button(action: addPost2) {
-                        Image(systemName: "paperplane.circle")
+                        Image(systemName: "ellipsis.circle")
                             .resizable()
                             .scaledToFit()
                             .frame(maxHeight: 30)
                             .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
                             .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
-                            .padding(.horizontal,5)
+                            .padding(.horizontal, 5)
                     }
-                    .disabled(newPost2.isEmpty && selectedImage2 == nil && selectedVideoURL2 != nil)
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.3), value: !newPost2.isEmpty || selectedImage2 != nil || selectedVideoURL2 != nil)
+                    
+                    if !newPost2.isEmpty {
+                        Button(action: addPost2) {
+                            Image(systemName: "paperplane.circle")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxHeight: 30)
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
+                                .symbolEffect(.bounce.down.wholeSymbol, options: .nonRepeating)
+                                .padding(.horizontal, 5)
+                        }
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.3), value: !newPost2.isEmpty)
+                    }
                 }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 3)
+                )
+                .padding(10)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showTextField)
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom), lineWidth: 3)
-            )
-            .padding(10)
         }
         .background(Color.gray.opacity(0.1))
     }
-
+    // 👇 ÚJ: Grid gombok kezelése
+    // 👇 MÓDOSÍTOTT: Grid gombok kezelése
+    // 👇 MÓDOSÍTOTT: Grid gombok kezelése - toggle funkcióval
+    private func handleGridItemSelection(_ itemTitle: String) {
+        switch itemTitle {
+        case "Szöveges":
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                // Ha már nyitva van a textfield, akkor zárjuk be
+                if showTextField {
+                    showTextField = false
+                    showPostcreate = false
+                } else {
+                    // Ha nincs nyitva, akkor nyissuk meg
+                    showTextField = true
+                    showPostcreate = false
+                }
+            }
+            
+        default:
+            // Egyéb opcióknál mindig zárjuk be a textfield-et
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                showTextField = false
+                showPostcreate = false
+            }
+            
+            // Várjunk egy kicsit az animáció miatt
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                switch itemTitle {
+                case "Kép":
+                    showImagePicker2 = true
+                case "Zene":
+                    // Itt implementáld a zene feltöltést
+                    print("Zene feltöltés")
+                case "Szavazás":
+                    selectedPostForPoll = nil
+                    showPollCreation = true
+                default:
+                    break
+                }
+            }
+        }
+    }
+    
     private var sortOptionsSection: some View {
         HStack {
             Menu {
@@ -856,6 +923,8 @@ struct FeedView2: View {
         newPost2 = ""
         selectedImage2 = nil
         selectedVideoURL2 = nil
+        showTextField = false
+
     }
 
     @MainActor
@@ -1269,19 +1338,20 @@ struct ErrorView2: View {
     
     var body: some View {
         VStack {
-            Text("Hiba")
-                .font(.headline)
+            Text("Error")
+                .font(.lexend())
                 .foregroundColor(.red)
             Text(message)
-                .font(.subheadline)
+                .font(.lexend2())
                 .multilineTextAlignment(.center)
                 .padding()
-            Button("Újrapróbálás", action: onRetry)
+            Button("Reload & Retry", action: onRetry)
+                .font(.lexend2())
                 .buttonStyle(.bordered)
         }
         .padding()
         .background(Color.red.opacity(0.1))
-        .cornerRadius(10)
+        .cornerRadius(30)
         .padding()
     }
 }
@@ -1426,11 +1496,10 @@ struct PostView2: View {
                             .scaledToFit()
                             .frame(height: 24)
                             .foregroundStyle(isSaved ?
-                                LinearGradient(gradient: Gradient(colors: [.red, .orange]), startPoint: .top, endPoint: .bottom) :
+                                LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom) :
                                 LinearGradient(gradient: Gradient(colors: [.orange, .blue]), startPoint: .top, endPoint: .bottom))
                         
-                        Text("Mentés")
-                            .font(.lexend3())
+                        Text(isSaved ? NSLocalizedString("post.saved", comment: "Saved post state") : NSLocalizedString("post.save", comment: "Save post action"))                            .font(.lexend3())
                             .foregroundColor(.gray)
                     }
                 }
@@ -1964,7 +2033,7 @@ struct PollCreationView: View {
                     )
                 .disabled(!isValidPoll)
             )
-            .alert("Hiba", isPresented: $showError) {
+            .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(errorMessage)
@@ -2157,6 +2226,63 @@ struct CommentView2: View {
         .padding(.vertical, 2)
     }
 }
+struct GridView: View {
+    
+    public var menuItems = [
+        MenuItem(title: "Szöveges", color: .blue, icon: "doc.text.fill"),
+        MenuItem(title: "Kép", color: .green, icon: "photo.fill.on.rectangle.fill"),
+        MenuItem(title: "Zene", color: .red, icon: "music.quarternote.3"),
+        MenuItem(title: "Szavazás", color: .orange, icon: "chart.pie.fill")
+    ]
+    
+    public let flexibleColumn = [
+        GridItem(.flexible(minimum: 100, maximum: 200)),
+        GridItem(.flexible(minimum: 100, maximum: 200))
+    ]
+    
+    // 👇 KÖTELEZŐVÉ TESZÜK A CLOSURE-T, NINCS ALAPÉRTELMEZETT ÉRTÉK
+    var onItemSelected: (String) -> Void
+    
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: flexibleColumn, spacing: 15) {
+                ForEach(menuItems, id: \.title) { item in
+                    Button(action: {
+                        onItemSelected(item.title) // 👈 ITT HÍVOD MEG A FUNKCIÓT
+                    }) {
+                        VStack(spacing: 8) {
+                            Image(systemName: item.icon)
+                                .font(.title2)
+                                .foregroundColor(.white)
+                            Text(item.title)
+                                .font(.custom("Lexend", size: 14))
+                                .fontWeight(.medium)
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(width: 180, height: 70, alignment: .center)
+                        .background(item.color.gradient)
+                        .cornerRadius(20)
+                        .shadow(color: item.color.opacity(0.3), radius: 3, x: 0, y: 2)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+        .frame(height: 180)
+        .padding(10)
+    }
+}
+
+struct MenuItem {
+    let title: String
+    let color: Color
+    let icon: String
+}
+
+//#Preview("GridView") {
+//    GridView()
+//}
 
 #Preview {
     FeedView2()
