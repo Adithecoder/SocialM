@@ -1,0 +1,160 @@
+/* 
+  Localizable.strings
+  SocialM
+
+  Created by Czeglédi Ádi on 10/15/25.
+  
+*/
+
+
+
+// Navigation
+"navigation.social_media" = "Social Media";
+"navigation.saved_posts" = "Saved Posts";
+"navigation.chats" = "Chats";
+
+// Loading and Errors
+"loading.posts" = "Loading posts...";
+"error.title" = "Error";
+"error.retry" = "Reload & Retry";
+"error.save_toggle" = "Error toggling save: %@";
+"error.loading_posts" = "Error during loading posts: %@";
+"error.creating_post" = "Error creating post: %@";
+"error.adding_comment" = "Error adding comment: %@";
+"error.removing_like" = "Error removing like: %@";
+"error.adding_like" = "Error adding like: %@";
+
+// Post Creation
+"post.placeholder" = "A cool post, %@?";
+"post.create" = "Create Post";
+"post.upload_photo" = "Upload Photo";
+"post.upload_video" = "Upload Video";
+"post.create_poll" = "Create Poll";
+"post.send" = "Send";
+
+// Sort Options
+"sort.title" = "Sorting";
+"sort.newest" = "Newest";
+"sort.most_liked" = "Most Likes";
+"sort.most_commented" = "Most Comments";
+
+// Search
+"search.placeholder" = "Search...";
+"search.toggle" = "Toggle Search";
+
+// Time Display
+"time.just_now" = "Just now";
+"time.yesterday" = "Yesterday";
+"time.days_ago" = "%d days ago";
+"time.weeks_ago" = "%d weeks ago";
+"time.months_ago" = "%d months ago";
+"time.years_ago" = "%d years ago";
+"time.long_ago" = "Long ago";
+
+// Post Actions
+"post.like" = "Like";
+"post.comment" = "Comment";
+"post.save" = "Save";
+"post.saved" = "Saved";
+"post.details" = "Details";
+"post.delete" = "Delete";
+"post.delete_confirmation" = "Delete Post";
+"post.delete_message" = "Are you sure you want to delete this post?";
+"post.delete_button" = "Delete";
+"post.cancel" = "Cancel";
+"post.share" = "Share";
+
+// Comments
+"comments.title" = "Comments";
+"comments.placeholder" = "Add a comment...";
+"comments.empty" = "No comments yet";
+"comments.user" = "User";
+"comments.add" = "Add Comment";
+
+// User Menu
+"user_menu.title" = "Actions for %@";
+"user_menu.view_profile" = "View Profile";
+"user_menu.send_message" = "Send Message";
+"user_menu.follow" = "Follow";
+"user_menu.edit_post" = "Edit Post";
+"user_menu.report" = "Report";
+"user_menu.cancel" = "Cancel";
+
+// Messages
+"message.compose" = "New Message";
+"message.recipient" = "Recipient";
+"message.send" = "Send Message";
+"message.sending" = "Sending...";
+"message.cancel" = "Cancel";
+"message.error_sending" = "Error sending message: %@";
+"message.error_chat_room" = "Error creating chat room: %@";
+
+// Polls
+"poll.create_title" = "Create New Poll";
+"poll.question" = "Poll Question";
+"poll.question_placeholder" = "Enter your question...";
+"poll.options" = "Available Options";
+"poll.option_placeholder" = "Option %d";
+"poll.add_option" = "Add New Option";
+"poll.remove_option" = "Remove Option";
+"poll.create_button" = "Create Poll";
+"poll.done" = "Done";
+"poll.cancel" = "Cancel";
+"poll.validation_question" = "Please enter a question!";
+"poll.validation_options" = "At least 2 options are required!";
+"poll.votes" = "%d votes";
+"poll.voted" = "✓ Vote cast";
+"poll.vote" = "Vote";
+
+// User Profile
+"profile.title" = "Profile";
+"profile.user" = "User";
+
+// Follow
+"follow.success" = "Successfully followed: %@";
+"follow.error" = "Error following: %@";
+
+// Report
+"report.user" = "Report User: %@";
+
+// Refresh
+"refresh.title" = "Refresh";
+
+
+// Login and Register
+
+"login" = "Login";
+"register" = "Register";
+"username" = "Username";
+"password" = "Password";
+"full_name" = "Full name";
+"auth.no_account_register" = "Don't have an account? Register here";
+    
+// Titles
+"register.title" = "Registration";
+"register.button" = "Register";
+
+// Form Fields
+"register.username" = "Username";
+"register.email" = "E-mail";
+"register.password" = "Password";
+"register.confirm_password" = "Confirm Password";
+
+// Validation Messages
+"register.validation.fill_all" = "Please fill in all fields correctly!";
+"register.validation.passwords_match" = "Passwords do not match!";
+
+// Server Messages
+"register.server.unavailable" = "Server unavailable. Please check ngrok connection!";
+"register.server.testing" = "Testing server connection...";
+"register.server.sending_request" = "Sending registration request...";
+"register.server.success" = "Successful registration";
+
+// Alert Titles
+"alert.registration" = "Registration";
+
+// Terms
+"register.terms" = "By registering you accept our general terms and conditions. Read more on the ... page.";
+
+// Debug Info
+"debug.info" = "Debug Info:";

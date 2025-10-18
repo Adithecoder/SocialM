@@ -1,0 +1,158 @@
+/* 
+  Localizable.strings
+  SocialM
+
+  Created by Czeglédi Ádi on 10/15/25.
+  
+*/
+
+
+// FeedView2.swift - Magyar lokalizáció
+
+// Navigáció
+"navigation.social_media" = "Közösségi Média";
+"navigation.saved_posts" = "Mentett posztok";
+"navigation.chats" = "Beszélgetések";
+
+// Betöltés és hibák
+"loading.posts" = "Bejegyzések betöltése...";
+"error.title" = "Hiba";
+"error.retry" = "Újratöltés";
+"error.save_toggle" = "Hiba a mentés váltásakor: %@";
+"error.loading_posts" = "Hiba a bejegyzések betöltésekor: %@";
+"error.creating_post" = "Hiba a bejegyzés létrehozásakor: %@";
+"error.adding_comment" = "Hiba a komment hozzáadásakor: %@";
+"error.removing_like" = "Hiba a like eltávolításakor: %@";
+"error.adding_like" = "Hiba a like hozzáadásakor: %@";
+
+// Poszt létrehozás
+"post.placeholder" = "Egy menő bejegyzés, %@?";
+"post.create" = "Bejegyzés létrehozása";
+"post.upload_photo" = "Fotó feltöltése";
+"post.upload_video" = "Videó feltöltése";
+"post.create_poll" = "Szavazás létrehozása";
+"post.send" = "Küldés";
+
+// Rendezési opciók
+"sort.title" = "Rendezés";
+"sort.newest" = "Legújabb";
+"sort.most_liked" = "Legtöbb like";
+"sort.most_commented" = "Legtöbb komment";
+
+// Keresés
+"search.placeholder" = "Keresés...";
+"search.toggle" = "Keresés kapcsolása";
+
+// Idő megjelenítés
+"time.just_now" = "Épp most";
+"time.yesterday" = "Tegnap";
+"time.days_ago" = "%d napja";
+"time.weeks_ago" = "%d hete";
+"time.months_ago" = "%d hónapja";
+"time.years_ago" = "%d éve";
+"time.long_ago" = "Régen";
+
+// Poszt műveletek
+"post.like" = "Like";
+"post.comment" = "Hozzászólás";
+"post.save" = "Mentés";
+"post.saved" = "Mentve";
+"post.details" = "Részletek";
+"post.delete" = "Törlés";
+"post.delete_confirmation" = "Bejegyzés törlése";
+"post.delete_message" = "Biztosan törölni szeretnéd a bejegyzést?";
+"post.delete_button" = "Törlés";
+"post.cancel" = "Mégse";
+"post.share" = "Megosztás";
+
+// Kommentek
+"comments.title" = "Hozzászólások";
+"comments.placeholder" = "Szólj hozzá!";
+"comments.empty" = "Még nincsenek kommentek";
+"comments.user" = "Felhasználó";
+"comments.add" = "Hozzászólás";
+
+// Felhasználói menü
+"user_menu.title" = "%@ műveletei";
+"user_menu.view_profile" = "Profil megtekintése";
+"user_menu.send_message" = "Üzenet küldése";
+"user_menu.follow" = "Követés";
+"user_menu.edit_post" = "Poszt szerkesztése";
+"user_menu.report" = "Jelentés";
+"user_menu.cancel" = "Mégse";
+
+// Üzenetek
+"message.compose" = "Új üzenet";
+"message.recipient" = "Címzett";
+"message.send" = "Üzenet küldése";
+"message.sending" = "Küldés...";
+"message.cancel" = "Mégse";
+"message.error_sending" = "Hiba az üzenet küldésekor: %@";
+"message.error_chat_room" = "Hiba a chat szoba létrehozásakor: %@";
+
+// Szavazások
+"poll.create_title" = "Új szavazás létrehozása";
+"poll.question" = "Szavazás kérdése";
+"poll.question_placeholder" = "Add meg a kérdést...";
+"poll.options" = "Választható opciók";
+"poll.option_placeholder" = "Opció %d";
+"poll.add_option" = "Új opció hozzáadása";
+"poll.remove_option" = "Opció eltávolítása";
+"poll.create_button" = "Szavazás létrehozása";
+"poll.done" = "Kész";
+"poll.cancel" = "Mégse";
+"poll.validation_question" = "A kérdés megadása kötelező!";
+"poll.validation_options" = "Legalább 2 opciót meg kell adni!";
+"poll.votes" = "%d szavazat";
+"poll.voted" = "✓ Szavazat leadva";
+"poll.vote" = "Szavazás";
+
+// Felhasználói profil
+"profile.title" = "Profil";
+"profile.user" = "Felhasználó";
+
+// Követés
+"follow.success" = "Sikeres követés: %@";
+"follow.error" = "Hiba a követésnél: %@";
+
+// Jelentés
+"report.user" = "Felhasználó jelentése: %@";
+
+// Frissítés
+"refresh.title" = "Frissítés";
+
+
+// Login és Register
+
+"login" = "Bejelentkezés";
+"register" = "Regisztráció";
+"auth.no_account_register" = "Még nincs fiókod? Regisztrálj itt";
+
+// Címek
+"register.title" = "Regisztráció";
+"register.button" = "Regisztráció";
+
+// Űrlap mezők
+"register.username" = "Felhasználónév";
+"register.email" = "E-mail";
+"register.password" = "Jelszó";
+"register.confirm_password" = "Jelszó megerősítése";
+
+// Validációs üzenetek
+"register.validation.fill_all" = "Kérjük, töltsd ki minden mezőt helyesen!";
+"register.validation.passwords_match" = "A jelszavak nem egyeznek!";
+
+// Szerver üzenetek
+"register.server.unavailable" = "A szerver nem elérhető. Ellenőrizd az ngrok kapcsolatot!";
+"register.server.testing" = "Szerver kapcsolat tesztelése...";
+"register.server.sending_request" = "Regisztrációs kérés küldése...";
+"register.server.success" = "Sikeres regisztráció";
+
+// Alert címek
+"alert.registration" = "Regisztráció";
+
+// Feltételek
+"register.terms" = "Regisztrációddal elfogad alkalmazásunk általános szerződési feltételeit. Bővebben a ... oldalon olvashatsz.";
+
+// Debug információk
+"debug.info" = "Debug Info:";
